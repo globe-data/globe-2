@@ -52,6 +52,10 @@ htmlcov/
 .pytest_cache/
 coverage.xml
 *.cover
+tests/
+test_*.py
+pytest.ini
+conftest.py
 
 # Database
 *.sqlite3
