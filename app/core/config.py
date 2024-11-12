@@ -15,10 +15,14 @@ class Settings(BaseSettings):
     
     # CORS Settings
     ALLOWED_ORIGINS: List[str] = [
-        "http://localhost:3000",  # React default
-        "http://localhost:8000",  # Backend default
-        "*"  # For development only! Configure properly for production
+        "http://localhost:3000",  # Frontend
+        "http://127.0.0.1:3000",  # Frontend alternative
+        "http://localhost:8000",  # Backend
+        "http://127.0.0.1:8000"   # Backend alternative
     ]
+    ALLOWED_METHODS: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    ALLOWED_HEADERS: List[str] = ["*"]
+    ALLOW_CREDENTIALS: bool = True
 
     @field_validator("ALLOWED_ORIGINS", mode='before')
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:

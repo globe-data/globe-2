@@ -3,7 +3,7 @@ from app.events.schemas.events import EVENT_TYPE_MAPPING, BaseEvent
 from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroSerializer
 import json
-from core.logging import get_logger
+from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 

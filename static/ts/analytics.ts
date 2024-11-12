@@ -1,4 +1,7 @@
-// Types for enhanced analytics
+import { BatchAnalyticsRequest, Event } from "./types/events";
+const API_URL = "http://127.0.0.1:3000";
+
+// Types for analytics
 interface UserContext {
   anonymousId: string;
   sessionId: string;
@@ -60,7 +63,7 @@ interface AnalyticsOptions {
 // Core tracking system
 class Analytics {
   private static instance: Analytics | null = null;
-  private events: any[] = [];
+  private events: Event[] = [];
   private interactionCount: number = 0;
   private startTime: number = Date.now();
   private lastActiveTime: number = Date.now();
@@ -169,22 +172,141 @@ class Analytics {
 
   private pushEvent(type: string, data: any): void {
     if (!this.shouldTrackEvent(type)) return;
-    // if (Math.random() > this.options.sampling) return;
 
-    this.interactionCount++;
-    this.lastActiveTime = Date.now();
+    const context = this.getInteractionContext();
+    let event: Event;
 
-    const event = {
-      eventId: crypto.randomUUID(),
-      timestamp: new Date().toISOString(),
-      type,
-      data,
-      context: {
-        ...this.getInteractionContext(),
-        user: this.userContext,
-        metrics: this.getBusinessMetrics(),
-      },
-    };
+    switch (type) {
+      case "pageview":
+        event = {
+          event_type: "pageview",
+          session_id: this.userContext.sessionId,
+          path: context.path,
+          url: context.url,
+          title: context.title,
+          viewport: context.viewport,
+          event_id: crypto.randomUUID(),
+          timestamp: new Date(),
+          user_id: this.userContext.customerUserId,
+          client_timestamp: new Date(),
+          referrer: this.userContext.referrer,
+          load_time: data.load_time,
+        };
+        break;
+      case "click":
+        event = {
+          event_type: "click",
+          session_id: this.userContext.sessionId,
+          element_path: data.element,
+          element_text: data.text,
+          x_pos: data.x,
+          y_pos: data.y,
+          href: data.link?.href,
+          event_id: crypto.randomUUID(),
+          timestamp: new Date(),
+          user_id: this.userContext.customerUserId,
+          client_timestamp: new Date(),
+        };
+        break;
+      case "scroll_milestone":
+        event = {
+          event_type: "scroll",
+          session_id: this.userContext.sessionId,
+          depth: data.depth,
+          direction: data.direction,
+          max_depth: this.maxScrollDepth,
+          relative_depth: this.calculateScrollDepth(),
+          event_id: crypto.randomUUID(),
+          timestamp: new Date(),
+          user_id: this.userContext.customerUserId,
+          client_timestamp: new Date(),
+        };
+        break;
+      case "media_play":
+        event = {
+          event_type: "media",
+          session_id: this.userContext.sessionId,
+          media_type: data.type,
+          action: data.action,
+          media_url: data.src,
+          current_time: data.currentTime,
+          duration: data.duration,
+          title: data.title,
+          event_id: crypto.randomUUID(),
+          timestamp: new Date(),
+          user_id: this.userContext.customerUserId,
+          client_timestamp: new Date(),
+        };
+        break;
+      case "form_submit":
+        event = {
+          event_type: "form",
+          session_id: this.userContext.sessionId,
+          form_id: data.formId,
+          action: data.action,
+          fields: data.fields,
+          success: data.success,
+          error_message: data.errorMessage,
+          event_id: crypto.randomUUID(),
+          timestamp: new Date(),
+          user_id: this.userContext.customerUserId,
+          client_timestamp: new Date(),
+        };
+        break;
+      case "conversion":
+        event = {
+          event_type: "conversion",
+          session_id: this.userContext.sessionId,
+          conversion_type: data.conversionType,
+          value: data.value,
+          currency: data.currency || "USD",
+          products: data.products,
+          event_id: crypto.randomUUID(),
+          timestamp: new Date(),
+          user_id: this.userContext.customerUserId,
+          client_timestamp: new Date(),
+        };
+        break;
+      case "error":
+        event = {
+          event_type: "error",
+          session_id: this.userContext.sessionId,
+          error_type: data.errorType,
+          message: data.message,
+          stack_trace: data.stackTrace,
+          component: data.component,
+          event_id: crypto.randomUUID(),
+          timestamp: new Date(),
+          user_id: this.userContext.customerUserId,
+          client_timestamp: new Date(),
+        };
+        break;
+      case "performance":
+        event = {
+          event_type: "performance",
+          session_id: this.userContext.sessionId,
+          metric_name: data.metricName,
+          value: data.value,
+          navigation_type: data.navigationType,
+          effective_connection_type: data.effectiveConnectionType,
+          event_id: crypto.randomUUID(),
+          timestamp: new Date(),
+          user_id: this.userContext.customerUserId,
+          client_timestamp: new Date(),
+        };
+        break;
+      default:
+        // For custom events or those not requiring specific structure
+        event = {
+          event_type: type as any,
+          session_id: this.userContext.sessionId,
+          event_id: crypto.randomUUID(),
+          timestamp: new Date(),
+          user_id: this.userContext.customerUserId,
+          client_timestamp: new Date(),
+          ...data,
+        } as Event;
+    }
 
     this.events.push(event);
     if (this.options.debug) {
@@ -472,12 +594,18 @@ class Analytics {
   }
 
   private async sendData(data: Uint8Array): Promise<void> {
-    const response = await fetch("/api/v1/analytics", {
+    const batchRequest: BatchAnalyticsRequest = {
+      events: this.events,
+    };
+
+    // Remove compression for now to simplify testing
+    const response = await fetch(`${API_URL}/api/v1/analytics/batch`, {
       method: "POST",
-      body: data,
+      body: JSON.stringify(batchRequest),
       headers: {
-        "Content-Type": "application/octet-stream",
-        "Content-Encoding": "gzip",
+        "Content-Type": "application/json",
+        // Remove the Content-Encoding header since we're not compressing
+        // "Content-Encoding": "gzip",
       },
     });
 
@@ -516,7 +644,7 @@ class Analytics {
   private async sendRealTimeEvent(event: any): Promise<void> {
     if (!this.options.enableRealTime) return;
     try {
-      await fetch("/api/v1/analytics/realtime", {
+      await fetch(`${API_URL}/api/v1/analytics/realtime`, {
         method: "POST",
         body: JSON.stringify(event),
         headers: {
@@ -537,7 +665,16 @@ class Analytics {
   }
 
   public track(eventName: string, properties?: Record<string, any>): void {
-    this.pushEvent("custom", { eventName, properties });
+    this.pushEvent("custom", {
+      event_type: "custom",
+      eventName,
+      properties,
+      session_id: this.userContext.sessionId,
+      event_id: crypto.randomUUID(),
+      timestamp: new Date(),
+      user_id: this.userContext.customerUserId,
+      client_timestamp: new Date(),
+    });
   }
 
   public setPrivacySettings(settings: Partial<PrivacySettings>): void {
@@ -605,7 +742,7 @@ class Analytics {
     const blob = new Blob([JSON.stringify(exitData)], {
       type: "application/json",
     });
-    navigator.sendBeacon("/api/v1/analytics/exit", blob);
+    navigator.sendBeacon(`${API_URL}/api/v1/analytics/exit`, blob);
 
     if (this.options.debug) {
       console.log("Exit data:", exitData);

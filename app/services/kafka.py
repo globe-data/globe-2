@@ -1,5 +1,5 @@
 from confluent_kafka import Producer, Consumer
-from core.config import Settings
+from app.core.config import Settings
 
 class KafkaService:
     def __init__(self, settings: Settings):

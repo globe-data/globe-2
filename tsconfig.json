@@ -7,9 +7,9 @@
         "esModuleInterop": true,
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true,
-        "outDir": "app/static/js",
+        "outDir": "static/js",
         "lib": ["ES2020", "DOM", "DOM.Iterable"]
     },
-    "include": ["app/static/ts/**/*"],
+    "include": ["static/ts/**/*"],
     "exclude": ["node_modules"]
 }

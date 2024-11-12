@@ -1,42 +1,87 @@
 from fastapi import APIRouter, Request, HTTPException
-from typing import Dict, Any
-import gzip
+from app.models.api_models import BatchAnalyticsRequest, BatchAnalyticsResponse
 import json
-from app.core.logging import get_logger
-from app.events.processor import EventProcessor
-from app.events.schemas.events import EVENT_TYPE_MAPPING
+import logging
+import sys
+from typing import Dict, Any
 
 router = APIRouter()
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
-@router.post("")
-async def receive_analytics(request: Request) -> Dict[str, Any]:
+# Add a stream handler if none exists
+if not logger.handlers:
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+@router.post("/batch", response_model=BatchAnalyticsResponse)
+async def receive_analytics(request: Request) -> BatchAnalyticsResponse:
+    """
+    Receive a batch of analytics events.
+    """
+    # Force print for debugging
+    print("\n=== NEW ANALYTICS REQUEST ===")
+    
     try:
-        # Read the raw body
         body = await request.body()
+        body_str = body.decode()
         
-        # Decompress gzipped data
+        # Force print the raw body
+        print(f"Raw body: {body_str}")
+        logger.debug(f"Raw body received: {body_str}")
+        
         try:
-            decompressed = gzip.decompress(body)
-            # Parse JSON
-            data = json.loads(decompressed.decode('utf-8'))
-        except Exception as e:
-            logger.error(f"Failed to decompress/parse data: {str(e)}")
-            raise HTTPException(status_code=400, detail="Invalid data format")
+            data = json.loads(body_str)
+            # Force print the parsed data
+            print(f"Parsed data: {json.dumps(data, indent=2)}")
+            logger.info(f"Parsed JSON data: {json.dumps(data, indent=2)}")
+        except json.JSONDecodeError as e:
+            print(f"JSON decode error: {e}")
+            logger.error(f"JSON decode error: {e}")
+            raise HTTPException(status_code=400, detail="Invalid JSON format")
 
-        logger.info("Received analytics batch", extra={"batch_size": len(data)})
-        return {"status": "success", "events_processed": len(data)}
+        try:
+            request_data = BatchAnalyticsRequest(**data)
+            event_count = len(request_data.events)
+            print(f"Validated {event_count} events")
+            logger.info(f"Validated {event_count} events")
+            
+            # Print each event for debugging
+            for idx, event in enumerate(request_data.events):
+                print(f"Event {idx + 1}: {event.dict()}")
+                logger.debug(f"Event {idx + 1}: {event.dict()}")
+                
+        except Exception as e:
+            print(f"Validation error: {e}")
+            logger.error(f"Validation error: {e}")
+            logger.error(f"Received data structure: {data}")
+            raise HTTPException(status_code=400, detail=str(e))
+
+        # Process the events
+        events_processed = len(request_data.events)
+        print(f"Successfully processed {events_processed} events")
+        logger.info(f"Successfully processed {events_processed} events")
         
+        return BatchAnalyticsResponse(
+            status="success",
+            events_processed=events_processed
+        )
+
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error processing analytics data: {str(e)}", exc_info=True)
+        print(f"Unexpected error: {str(e)}")
+        logger.error(f"Unexpected error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/realtime")
 async def receive_realtime_event(request: Request) -> Dict[str, Any]:
-    try:
-        data = await request.json()
-        logger.info("Received realtime event", extra={"event_type": data.get("event_type")})
-        return {"status": "success"}
-    except Exception as e:
-        logger.error(f"Error processing realtime event: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal server error") 
+    # todo: implement
+    pass
+
+@router.options("/batch")
+async def batch_options():
+    return {"status": "ok"}
