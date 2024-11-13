@@ -2,14 +2,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.api import api_router
-import uvicorn
-from app.core.logging import setup_logging
 from app.core.config import Settings
+from app.core.logging import setup_logging
+from app.db.factory import get_storage
 
 settings = Settings()
 logger = setup_logging(settings)
 
-app = FastAPI()
+# Initialize storage
+storage = get_storage()
+
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+)
 
 # Add CORS middleware
 app.add_middleware(
@@ -24,7 +30,8 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Include the API router
-app.include_router(api_router, prefix="/api/v1")
+app.include_router(api_router, prefix=settings.API_V1_STR)
 
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

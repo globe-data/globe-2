@@ -1,24 +1,50 @@
-from typing import List, Optional, Union
-from pydantic import AnyHttpUrl, field_validator
+from typing import List
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from dotenv import load_dotenv
+import os
+import logging
+from pydantic import field_validator
+from typing import Union, Optional
+
+load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
     # API Settings
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "Globe Data"
     VERSION: str = "1.0.0"
+    STORAGE_TYPE: str = "supabase"  # Must be either "supabase" or "timescale"
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "default-secret-key")
+    DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     
-    # Security
-    SECRET_KEY: str = "dev-secret-key-not-for-production"  # Default for development
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
+    # Supabase Settings
+    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+    SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "")
+    
+    @field_validator("SUPABASE_URL")
+    def validate_supabase_url(cls, v):
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("SUPABASE_URL must start with http:// or https://")
+        return v.rstrip('/')  # Remove trailing slash if present
+    
+    @field_validator("SUPABASE_KEY")
+    def validate_supabase_key(cls, v):
+        if not v:
+            raise ValueError("SUPABASE_KEY cannot be empty")
+        return v
+    
+    SUPABASE_PASSWORD: str = os.getenv("SUPABASE_PASSWORD", "")
     
     # CORS Settings
     ALLOWED_ORIGINS: List[str] = [
-        "http://localhost:3000",  # Frontend
-        "http://127.0.0.1:3000",  # Frontend alternative
-        "http://localhost:8000",  # Backend
-        "http://127.0.0.1:8000"   # Backend alternative
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000"
     ]
     ALLOWED_METHODS: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     ALLOWED_HEADERS: List[str] = ["*"]
@@ -55,7 +81,7 @@ class Settings(BaseSettings):
         case_sensitive = True
         env_file = ".env"
         env_file_encoding = "utf-8"
-        extra = "forbid"  # Prevent extra fields
+        extra = "allow"
 
 
 @lru_cache()

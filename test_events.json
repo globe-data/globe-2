@@ -1,0 +1,321 @@
+{
+  "events": [
+    {
+      "event_id": "6412ccf5-079d-43fa-9e39-8dc768d8d2c5",
+      "timestamp": "2024-11-13T15:46:08.788015",
+      "session_id": "sess_e3984188",
+      "user_id": "user_2697",
+      "client_timestamp": "2024-11-13T15:46:07.894345",
+      "event_type": "scroll",
+      "data": {
+        "depth": 4498,
+        "direction": "up",
+        "max_depth": 4537,
+        "relative_depth": 0.99
+      }
+    },
+    {
+      "event_id": "0c846fe2-4cea-400d-bd97-84dd412b01fe",
+      "timestamp": "2024-11-13T15:46:08.788494",
+      "session_id": "sess_9f89d9ed",
+      "user_id": "user_6446",
+      "client_timestamp": "2024-11-13T15:46:08.022503",
+      "event_type": "scroll",
+      "data": {
+        "depth": 1027,
+        "direction": "down",
+        "max_depth": 2602,
+        "relative_depth": 0.39
+      }
+    },
+    {
+      "event_id": "22d2557b-bf2b-4436-8af8-417b9e89d6ef",
+      "timestamp": "2024-11-13T15:46:08.788518",
+      "session_id": "sess_5f05d4a0",
+      "user_id": "user_5443",
+      "client_timestamp": "2024-11-13T15:46:08.008522",
+      "event_type": "media",
+      "data": {
+        "media_type": "audio",
+        "action": "play",
+        "media_url": "https://example.com/media/video-1.mp4",
+        "playback_time": 161,
+        "duration": 200,
+        "title": "Sample Media"
+      }
+    },
+    {
+      "event_id": "e2692d47-82d3-42af-87e4-f15f48592817",
+      "timestamp": "2024-11-13T15:46:08.788531",
+      "session_id": "sess_3e03cbc4",
+      "user_id": "user_8478",
+      "client_timestamp": "2024-11-13T15:46:08.183536",
+      "event_type": "pageview",
+      "data": {
+        "url": "https://example.com/blog",
+        "referrer": "https://facebook.com",
+        "title": "Example - blog",
+        "path": "/blog",
+        "viewport": {
+          "width": 768,
+          "height": 1080
+        },
+        "load_time": 1.84
+      }
+    },
+    {
+      "event_id": "a4aaf8ed-7f1a-4875-984f-d491253a3672",
+      "timestamp": "2024-11-13T15:46:08.788550",
+      "session_id": "sess_2e225218",
+      "user_id": "user_5865",
+      "client_timestamp": "2024-11-13T15:46:08.145554",
+      "event_type": "media",
+      "data": {
+        "media_type": "audio",
+        "action": "complete",
+        "media_url": "https://example.com/media/video-1.mp4",
+        "playback_time": 46,
+        "duration": 123,
+        "title": "Sample Media"
+      }
+    },
+    {
+      "event_id": "054e0044-1835-44e2-8884-bd67a48983a7",
+      "timestamp": "2024-11-13T15:46:08.788561",
+      "session_id": "sess_6087ccc2",
+      "user_id": "user_8587",
+      "client_timestamp": "2024-11-13T15:46:07.991565",
+      "event_type": "error",
+      "data": {
+        "error_type": "api",
+        "message": "Something went wrong",
+        "stack_trace": "Error: Failed to fetch\n    at API.getData (/src/api.js:123)",
+        "component": "Checkout"
+      }
+    },
+    {
+      "event_id": "df190797-098b-42ef-8212-03d73a152c25",
+      "timestamp": "2024-11-13T15:46:08.788572",
+      "session_id": "sess_1a7c3287",
+      "user_id": "user_9240",
+      "client_timestamp": "2024-11-13T15:46:08.348575",
+      "event_type": "pageview",
+      "data": {
+        "url": "https://example.com/checkout",
+        "referrer": "https://google.com",
+        "title": "Example - checkout",
+        "path": "/checkout",
+        "viewport": {
+          "width": 768,
+          "height": 900
+        },
+        "load_time": 2.93
+      }
+    },
+    {
+      "event_id": "a7e560e0-420f-4158-beed-e537d2e47376",
+      "timestamp": "2024-11-13T15:46:08.788587",
+      "session_id": "sess_5e09fe94",
+      "user_id": "user_5524",
+      "client_timestamp": "2024-11-13T15:46:08.182591",
+      "event_type": "media",
+      "data": {
+        "media_type": "audio",
+        "action": "complete",
+        "media_url": "https://example.com/media/video-1.mp4",
+        "playback_time": 39,
+        "duration": 117,
+        "title": "Sample Media"
+      }
+    },
+    {
+      "event_id": "17b8b488-cbd7-413f-8f3d-10c72dfde4b3",
+      "timestamp": "2024-11-13T15:46:08.788599",
+      "session_id": "sess_6df14485",
+      "user_id": "user_6195",
+      "client_timestamp": "2024-11-13T15:46:08.666602",
+      "event_type": "click",
+      "data": {
+        "element_path": "div#main > div.product-card",
+        "element_text": "Click me",
+        "x_pos": 218,
+        "y_pos": 1067,
+        "href": "/checkout"
+      }
+    },
+    {
+      "event_id": "f266dd65-edb3-4f4d-8443-1f59d64028e4",
+      "timestamp": "2024-11-13T15:46:08.788610",
+      "session_id": "sess_53b86879",
+      "user_id": "user_5947",
+      "client_timestamp": "2024-11-13T15:46:08.155613",
+      "event_type": "click",
+      "data": {
+        "element_path": "div#main > button.buy-now",
+        "element_text": "Click me",
+        "x_pos": 166,
+        "y_pos": 354,
+        "href": "/product/123"
+      }
+    },
+    {
+      "event_id": "1912bfac-ce48-46f8-86dd-2b74319b4c9b",
+      "timestamp": "2024-11-13T15:46:08.788620",
+      "session_id": "sess_6ccd0f9c",
+      "user_id": "user_8460",
+      "client_timestamp": "2024-11-13T15:46:08.025624",
+      "event_type": "error",
+      "data": {
+        "error_type": "network",
+        "message": "Something went wrong",
+        "stack_trace": "Error: Failed to fetch\n    at API.getData (/src/api.js:123)",
+        "component": "ProductList"
+      }
+    },
+    {
+      "event_id": "9866e253-44ed-46f2-b74d-b3ed31da4ac8",
+      "timestamp": "2024-11-13T15:46:08.788629",
+      "session_id": "sess_5e0f3692",
+      "user_id": "user_2843",
+      "client_timestamp": "2024-11-13T15:46:08.053633",
+      "event_type": "form",
+      "data": {
+        "form_id": "form_4",
+        "action": "abandon",
+        "fields": [
+          "email",
+          "name",
+          "message"
+        ],
+        "success": false,
+        "error_message": null
+      }
+    },
+    {
+      "event_id": "630d5de1-22b1-4c07-b653-d4a1534b2c5e",
+      "timestamp": "2024-11-13T15:46:08.788640",
+      "session_id": "sess_0c6c2bfa",
+      "user_id": "user_4421",
+      "client_timestamp": "2024-11-13T15:46:08.315644",
+      "event_type": "pageview",
+      "data": {
+        "url": "https://example.com/contact",
+        "referrer": null,
+        "title": "Example - contact",
+        "path": "/contact",
+        "viewport": {
+          "width": 1920,
+          "height": 1080
+        },
+        "load_time": 2.75
+      }
+    },
+    {
+      "event_id": "2e151642-6b40-45cf-a24d-8870474f8b16",
+      "timestamp": "2024-11-13T15:46:08.788652",
+      "session_id": "sess_c0fccde8",
+      "user_id": "user_9210",
+      "client_timestamp": "2024-11-13T15:46:07.867655",
+      "event_type": "media",
+      "data": {
+        "media_type": "video",
+        "action": "complete",
+        "media_url": "https://example.com/media/video-1.mp4",
+        "playback_time": 86,
+        "duration": 94,
+        "title": "Sample Media"
+      }
+    },
+    {
+      "event_id": "9201b116-aa59-440b-a19d-44c7a9309bc2",
+      "timestamp": "2024-11-13T15:46:08.788662",
+      "session_id": "sess_9f63dca2",
+      "user_id": "user_3102",
+      "client_timestamp": "2024-11-13T15:46:07.996666",
+      "event_type": "error",
+      "data": {
+        "error_type": "api",
+        "message": "Something went wrong",
+        "stack_trace": "Error: Failed to fetch\n    at API.getData (/src/api.js:123)",
+        "component": "Checkout"
+      }
+    },
+    {
+      "event_id": "c228dd51-7f74-4032-9a6e-4538e5ce97db",
+      "timestamp": "2024-11-13T15:46:08.788671",
+      "session_id": "sess_91b775de",
+      "user_id": "user_4093",
+      "client_timestamp": "2024-11-13T15:46:08.571675",
+      "event_type": "form",
+      "data": {
+        "form_id": "form_5",
+        "action": "abandon",
+        "fields": [
+          "email",
+          "name",
+          "message"
+        ],
+        "success": false,
+        "error_message": "Invalid email"
+      }
+    },
+    {
+      "event_id": "e3ddc183-c8e9-49ef-bfd0-5982e2359aca",
+      "timestamp": "2024-11-13T15:46:08.788681",
+      "session_id": "sess_af51609a",
+      "user_id": "user_2261",
+      "client_timestamp": "2024-11-13T15:46:08.105684",
+      "event_type": "performance",
+      "data": {
+        "metric_name": "lcp",
+        "value": 3.072,
+        "navigation_type": "navigate",
+        "effective_connection_type": "2g"
+      }
+    },
+    {
+      "event_id": "6c9e171f-8ac3-4bfa-9da3-d380e48f2b91",
+      "timestamp": "2024-11-13T15:46:08.788693",
+      "session_id": "sess_c84185ed",
+      "user_id": "user_1223",
+      "client_timestamp": "2024-11-13T15:46:07.827696",
+      "event_type": "conversion",
+      "data": {
+        "conversion_type": "purchase",
+        "value": 250.63,
+        "currency": "USD",
+        "products": null
+      }
+    },
+    {
+      "event_id": "606af4a6-3e75-4f01-8887-102cc76bf063",
+      "timestamp": "2024-11-13T15:46:08.788704",
+      "session_id": "sess_fbc2cda5",
+      "user_id": "user_3791",
+      "client_timestamp": "2024-11-13T15:46:08.603707",
+      "event_type": "scroll",
+      "data": {
+        "depth": 1886,
+        "direction": "up",
+        "max_depth": 2354,
+        "relative_depth": 0.8
+      }
+    },
+    {
+      "event_id": "2850dd95-c6a7-492a-8fc3-bcb21bd8e461",
+      "timestamp": "2024-11-13T15:46:08.788715",
+      "session_id": "sess_e5df667a",
+      "user_id": "user_7467",
+      "client_timestamp": "2024-11-13T15:46:08.634718",
+      "event_type": "media",
+      "data": {
+        "media_type": "video",
+        "action": "play",
+        "media_url": "https://example.com/media/video-1.mp4",
+        "playback_time": 7,
+        "duration": 36,
+        "title": "Sample Media"
+      }
+    }
+  ]
+}

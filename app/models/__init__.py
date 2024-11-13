@@ -1,9 +1,6 @@
 from app.models.api_models import (
     BatchAnalyticsRequest,
-    BatchAnalyticsResponse,
-    RealTimeAnalyticsRequest,
-    RealTimeAnalyticsResponse,
-    ExitDataRequest,
+    AnalyticsResponse,
     ErrorResponse,
     BaseEvent,
     CustomEvent,
@@ -12,10 +9,7 @@ from app.models.api_models import (
 
 __all__ = [
     'BatchAnalyticsRequest',
-    'BatchAnalyticsResponse',
-    'RealTimeAnalyticsRequest',
-    'RealTimeAnalyticsResponse',
-    'ExitDataRequest',
+    'AnalyticsResponse',
     'ErrorResponse',
     'BaseEvent',
     'CustomEvent',

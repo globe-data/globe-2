@@ -37,7 +37,7 @@ class EventProcessor:
         return json.dumps(event.dict()).encode('utf-8') 
 
 async def process_events(events):
-    logger.info("Processing events", extra={"count": len(events)})
+    # logger.info("Processing events", extra={"count": len(events)})
     try:
         # Process events
         logger.debug("Events processed successfully")

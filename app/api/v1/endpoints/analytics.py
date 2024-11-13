@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Request, HTTPException
-from app.models.api_models import BatchAnalyticsRequest, BatchAnalyticsResponse
+from app.models.api_models import BatchAnalyticsRequest, AnalyticsResponse
 import json
 import logging
 import sys
 from typing import Dict, Any
+from datetime import datetime
+from app.db.factory import get_storage
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -17,42 +19,38 @@ if not logger.handlers:
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-@router.post("/batch", response_model=BatchAnalyticsResponse)
-async def receive_analytics(request: Request) -> BatchAnalyticsResponse:
+# Add this function at the top of your file
+def datetime_handler(obj):
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+@router.post("/batch", response_model=AnalyticsResponse)
+async def receive_analytics(request: Request) -> AnalyticsResponse:
     """
     Receive a batch of analytics events.
     """
     # Force print for debugging
-    print("\n=== NEW ANALYTICS REQUEST ===")
+    print(f"\n=== NEW ANALYTICS REQUEST ===")
     
     try:
+
+        # Get the raw body
         body = await request.body()
         body_str = body.decode()
         
-        # Force print the raw body
-        print(f"Raw body: {body_str}")
-        logger.debug(f"Raw body received: {body_str}")
-        
+        # Parse the body
         try:
             data = json.loads(body_str)
-            # Force print the parsed data
-            print(f"Parsed data: {json.dumps(data, indent=2)}")
-            logger.info(f"Parsed JSON data: {json.dumps(data, indent=2)}")
         except json.JSONDecodeError as e:
             print(f"JSON decode error: {e}")
             logger.error(f"JSON decode error: {e}")
             raise HTTPException(status_code=400, detail="Invalid JSON format")
 
+        # Validate the data as a BatchAnalyticsRequest
         try:
             request_data = BatchAnalyticsRequest(**data)
-            event_count = len(request_data.events)
-            print(f"Validated {event_count} events")
-            logger.info(f"Validated {event_count} events")
-            
-            # Print each event for debugging
-            for idx, event in enumerate(request_data.events):
-                print(f"Event {idx + 1}: {event.dict()}")
-                logger.debug(f"Event {idx + 1}: {event.dict()}")
+        
                 
         except Exception as e:
             print(f"Validation error: {e}")
@@ -62,10 +60,16 @@ async def receive_analytics(request: Request) -> BatchAnalyticsResponse:
 
         # Process the events
         events_processed = len(request_data.events)
-        print(f"Successfully processed {events_processed} events")
-        logger.info(f"Successfully processed {events_processed} events")
+
+        # Store the events
+        storage = get_storage()
+        events_as_dicts = [event.model_dump() for event in request_data.events]
+        success = await storage.store_events(events_as_dicts)
+
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to store events")
         
-        return BatchAnalyticsResponse(
+        return AnalyticsResponse(
             status="success",
             events_processed=events_processed
         )
