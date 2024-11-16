@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics Test</title>
+    <style>
+        .test-section {
+            margin: 20px;
+            padding: 20px;
+            border: 1px solid #ccc;
+        }
+        .video-player {
+            width: 400px;
+            height: 300px;
+            background: #000;
+        }
+    </style>
+</head>
+<body>
+    <h1>Analytics Test Page</h1>
+    
+    <!-- Click Test -->
+    <div class="test-section">
+        <h2>Click Test</h2>
+        <div id="clickMe" style="padding: 20px; background: #eee; cursor: pointer;">
+            Click this div!
+        </div>
+    </div>
+
+    <!-- Form Test -->
+    <div class="test-section">
+        <h2>Form Test</h2>
+        <form id="testForm">
+            <input type="text" name="username" placeholder="Username">
+            <input type="email" name="email" placeholder="Email">
+            <button type="submit">Submit Form</button>
+        </form>
+    </div>
+
+    <!-- Media Test -->
+    <div class="test-section">
+        <h2>Media Test</h2>
+        <video id="testVideo" controls>
+            <source src="https://www.w3schools.com/html/mov_bbb.mp4" type="video/mp4">
+        </video>
+        <audio id="testAudio" controls>
+            <source src="https://www.w3schools.com/html/horse.mp3" type="audio/mpeg">
+        </audio>
+    </div>
+
+    <!-- Error Test -->
+    <div class="test-section">
+        <h2>Error Test</h2>
+        <button id="errorButton">Trigger Error</button>
+    </div>
+
+    <!-- Conversion Test -->
+    <div class="test-section">
+        <h2>Conversion Test</h2>
+        <button id="purchaseButton">Simulate Purchase ($99.99)</button>
+    </div>
+
+    <!-- Performance Test -->
+    <div class="test-section">
+        <h2>Performance Test</h2>
+        <button id="loadHeavyContent">Load Heavy Content</button>
+    </div>
+
+    <!-- Scroll Test -->
+    <div style="height: 200vh; padding: 20px;">
+        Scroll down this long div!
+    </div>
+
+    <script type="module" src="/static/js/newAnalytics.js"></script>
+</body>
+</html> 

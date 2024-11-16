@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from app.api import api_router
 from app.core.config import Settings
 from app.core.logging import setup_logging
@@ -20,7 +21,8 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    # allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=["*"],  # TODO: Change this
     allow_credentials=settings.ALLOW_CREDENTIALS,
     allow_methods=settings.ALLOWED_METHODS,
     allow_headers=settings.ALLOWED_HEADERS,
@@ -31,6 +33,10 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Include the API router
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+@app.get("/")
+async def read_index():
+    return FileResponse('static/index.html')
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,6 +1,7 @@
 from typing import Optional, List, Union, Dict, Any
 from pydantic import BaseModel, Field
 from datetime import datetime
+from typing import Literal
 
 class BaseEvent(BaseModel):
     event_id: str
@@ -33,12 +34,12 @@ class Scroll(BaseEvent):
     relative_depth: float
 
 class Media(BaseEvent):
-    media_type: str
-    action: str
+    media_type: Literal["video", "audio"]
+    action: Literal["play", "pause", "complete"]
     media_url: str
-    current_time: int
+    playback_time: int
     duration: int
-    title: str
+    title: Optional[str]
 
 class Form(BaseEvent):
     form_id: str

@@ -188,3 +188,11 @@ class SupabaseAnalytics(AnalyticsStorage):
         except (KeyError, ValueError) as e:
             logger.error(f"Invalid scroll event data: {e}")
             raise
+    
+    def validate_media_event(self, data: dict) -> dict:
+        """Validate and transform media event data"""
+        if data['media_type'] not in ['video', 'audio']:
+            raise ValueError(f"Invalid media_type: {data['media_type']}")
+        if data['action'] not in ['play', 'pause', 'complete']:
+            raise ValueError(f"Invalid action: {data['action']}")
+        return data
