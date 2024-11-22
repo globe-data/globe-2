@@ -12,15 +12,16 @@ class EventType(str, Enum):
     FORM = "form"
     CONVERSION = "conversion"
     ERROR = "error"
+    VISIBILITY = "visibility"
     PERFORMANCE = "performance"
     CUSTOM = "custom"
 
 # Base Event Model
 class BaseEvent(BaseModel):
+    globe_id: str
     event_id: str
     timestamp: datetime
     session_id: str
-    user_id: str
     client_timestamp: datetime
 
 # Event-specific Models
@@ -40,6 +41,8 @@ class ClickEvent(BaseEvent):
     data: dict = Field(..., example={
         "element_path": str,
         "element_text": str,
+        "target": Dict[str, Any],
+        "page": Dict[str, Any], 
         "x_pos": int,
         "y_pos": int,
         "href": Optional[str]
@@ -93,6 +96,12 @@ class ErrorEvent(BaseEvent):
         "component": str
     })
 
+class VisibilityEvent(BaseEvent):
+    event_type: Literal[EventType.VISIBILITY]
+    data: dict = Field(..., example={
+        "visibility_state": str,
+    })
+
 class PerformanceEvent(BaseEvent):
     event_type: Literal[EventType.PERFORMANCE]
     data: dict = Field(..., example={
@@ -119,7 +128,8 @@ Event = Union[
     ConversionEvent,
     ErrorEvent,
     PerformanceEvent,
-    CustomEvent
+    CustomEvent,
+    VisibilityEvent
 ]
 
 # Request Models
@@ -129,38 +139,83 @@ class BatchAnalyticsRequest(BaseModel):
     def model_post_init(self, *args, **kwargs):
         # Convert raw dictionaries to proper event types
         processed_events = []
-        for event in self.events:
-            event_type = event.get('event_type')
-            if not event_type:
-                continue
-                
-            # Restructure event data
-            base_data = {
-                'event_id': event['event_id'],
-                'timestamp': event['timestamp'],
-                'session_id': event['session_id'],
-                'user_id': event['user_id'],
-                'client_timestamp': event['client_timestamp'],
-                'event_type': event['event_type'],
-                'data': event.get('data', {})
-            }
-            
-            # Create appropriate event object based on type
-            event_class = {
-                'pageview': PageViewEvent,
-                'click': ClickEvent,
-                'scroll': ScrollEvent,
-                'media': MediaEvent,
-                'form': FormEvent,
-                'conversion': ConversionEvent,
-                'error': ErrorEvent,
-                'performance': PerformanceEvent,
-                'custom': CustomEvent
-            }.get(event_type)
-            
-            if event_class:
-                processed_events.append(event_class(**base_data))
-                
+        validation_errors = []
+
+        for idx, event in enumerate(self.events):
+            try:
+                event_type = event.get('event_type')
+                if not event_type:
+                    validation_errors.append({
+                        'index': idx,
+                        'error': 'Missing event_type field'
+                    })
+                    continue
+
+                # Validate required base fields
+                required_fields = ['globe_id', 'event_id', 'timestamp', 'session_id', 'client_timestamp']
+                missing_fields = [field for field in required_fields if field not in event]
+                if missing_fields:
+                    validation_errors.append({
+                        'index': idx,
+                        'error': f'Missing required fields: {", ".join(missing_fields)}'
+                    })
+                    continue
+
+                # Restructure event data
+                base_data = {
+                    'globe_id': event['globe_id'],
+                    'event_id': event['event_id'],
+                    'timestamp': event['timestamp'],
+                    'session_id': event['session_id'],                    
+                    'client_timestamp': event['client_timestamp'],
+                    'event_type': event['event_type'],
+                    'data': event.get('data', {})
+                }
+
+                # Handle custom event name field
+                if event_type == 'custom':
+                    if 'name' not in event:
+                        validation_errors.append({
+                            'index': idx,
+                            'error': 'Custom events require a name field'
+                        })
+                        continue
+                    base_data['name'] = event['name']
+
+                # Create appropriate event object based on type
+                event_class = {
+                    'pageview': PageViewEvent,
+                    'click': ClickEvent,
+                    'scroll': ScrollEvent,
+                    'media': MediaEvent,
+                    'form': FormEvent,
+                    'conversion': ConversionEvent,
+                    'error': ErrorEvent,
+                    'performance': PerformanceEvent,
+                    'visibility': VisibilityEvent,
+                    'custom': CustomEvent
+                }.get(event_type)
+
+                if event_class:
+                    processed_events.append(event_class(**base_data))
+                else:
+                    validation_errors.append({
+                        'index': idx,
+                        'error': f'Unknown event type: {event_type}'
+                    })
+
+            except Exception as e:
+                validation_errors.append({
+                    'index': idx,
+                    'error': str(e)
+                })
+
+        if validation_errors:
+            raise ValueError({
+                'message': 'Some events failed validation',
+                'errors': validation_errors
+            })
+
         self.events = processed_events
 
 class AnalyticsResponse(BaseModel):

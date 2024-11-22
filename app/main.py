@@ -30,6 +30,7 @@ app.add_middleware(
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/dist", StaticFiles(directory="dist"), name="dist")
 
 # Include the API router
 app.include_router(api_router, prefix=settings.API_V1_STR)

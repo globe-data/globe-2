@@ -2,10 +2,10 @@ import { z } from "zod";
 
 // Base event type that all others extend from
 const BaseEvent = z.object({
+  globe_id: z.string(),
   event_id: z.string(),
   timestamp: z.date(),
   session_id: z.string(),
-  user_id: z.string(),
   client_timestamp: z.date(),
   event_type: z.string(),
 });
@@ -30,6 +30,8 @@ const ClickEvent = BaseEvent.extend({
   data: z.object({
     element_path: z.string(),
     element_text: z.string(),
+    target: z.record(z.unknown()),
+    page: z.record(z.unknown()),
     x_pos: z.number(),
     y_pos: z.number(),
     href: z.string().optional(),
@@ -99,6 +101,20 @@ const PerformanceEvent = BaseEvent.extend({
   }),
 });
 
+export enum VisibilityState {
+  HIDDEN = "hidden",
+  VISIBLE = "visible",
+  PRERENDER = "prerender",
+  UNLOADED = "unloaded",
+}
+
+const VisibilityEvent = BaseEvent.extend({
+  event_type: z.literal("visibility"),
+  data: z.object({
+    visibility_state: z.nativeEnum(VisibilityState),
+  }),
+});
+
 const CustomEvent = BaseEvent.extend({
   event_type: z.literal("custom"),
   name: z.string(),
@@ -115,6 +131,7 @@ export type Event =
   | z.infer<typeof ConversionEvent>
   | z.infer<typeof ErrorEvent>
   | z.infer<typeof PerformanceEvent>
+  | z.infer<typeof VisibilityEvent>
   | z.infer<typeof CustomEvent>;
 
 export type BatchAnalyticsRequest = {
@@ -131,5 +148,6 @@ export const EventSchemas = {
   conversion: ConversionEvent,
   error: ErrorEvent,
   performance: PerformanceEvent,
+  visibility: VisibilityEvent,
   custom: CustomEvent,
 } as const;

@@ -4,7 +4,7 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-import json
+from app.events.schemas.events import EventType
 
 logger = get_logger(__name__)
 
@@ -21,10 +21,10 @@ class SupabaseAnalytics(AnalyticsStorage):
             async with self.supabase.transaction() as txn:
                 # Prepare base event data
                 base_event = {
+                    'globe_id': event_data['globe_id'],
                     'event_id': event_data['event_id'],
                     'timestamp': event_data['timestamp'],
                     'session_id': event_data['session_id'],
-                    'user_id': event_data['user_id'],
                     'client_timestamp': event_data['client_timestamp'],
                     'event_type': event_data['event_type']
                 }
@@ -61,12 +61,12 @@ class SupabaseAnalytics(AnalyticsStorage):
         try:
             # Insert base events first
             base_events = [{
+                'globe_id': event.get('globe_id', '03c04930-0c1b-4a2a-96cd-933dd8d7914c'),
                 'event_id': event['event_id'],
                 'timestamp': event['timestamp'], 
                 'session_id': event['session_id'],
-                'user_id': event['user_id'],
                 'client_timestamp': event['client_timestamp'],
-                'event_type': event['event_type']
+                'event_type': event['event_type'],
             } for event in event_data]
 
             base_events = [self._prepare_event_data(event) for event in base_events]
@@ -101,7 +101,11 @@ class SupabaseAnalytics(AnalyticsStorage):
 
             # Insert event-specific data
             for event_type, events in event_type_groups.items():
-                result = self.supabase.table(f"{event_type.value}_events").insert(events).execute()
+                table_name = f"{event_type}_events"
+                if isinstance(event_type, EventType):
+                    table_name = f"{event_type.value}_events"
+                    
+                result = self.supabase.table(table_name).insert(events).execute()
                 if not result.data:
                     logger.error(f"Failed to insert {event_type} events")
                     return False

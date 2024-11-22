@@ -1,13 +1,13 @@
-from typing import Optional, List, Union, Dict, Any
-from pydantic import BaseModel, Field
+from typing import Optional, List, Union
+from pydantic import BaseModel
 from datetime import datetime
 from typing import Literal
 
 class BaseEvent(BaseModel):
+    globe_id: str
     event_id: str
     timestamp: datetime
     session_id: str
-    user_id: str
     client_timestamp: datetime
     event_type: str
 
@@ -60,6 +60,9 @@ class Error(BaseEvent):
     stack_trace: str
     component: str
 
+class Visibility(BaseEvent):
+    visibility_state: str
+
 class Performance(BaseEvent):
     metric_name: str
     value: float
@@ -75,7 +78,8 @@ Event = Union[
     Form,
     Conversion,
     Error,
-    Performance
+    Performance,
+    Visibility
 ]
 
 # Mapping of event_type strings to event classes
@@ -87,5 +91,6 @@ EVENT_TYPE_MAPPING = {
     "form": Form,
     "conversion": Conversion,
     "error": Error,
-    "performance": Performance
+    "performance": Performance,
+    "visibility": Visibility
 }

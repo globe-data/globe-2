@@ -9,11 +9,11 @@ class AnalyticsEvent(Base):
     __table_args__ = {"schema": "analytics"}
 
     id = Column(Integer, primary_key=True)
+    globe_id = Column(String, nullable=False, index=True)
     event_id = Column(String, unique=True, nullable=False)
     event_type = Column(String, nullable=False)
     timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
     session_id = Column(String, nullable=False, index=True)
-    user_id = Column(String, index=True)
     client_timestamp = Column(DateTime(timezone=True))
     data = Column(JSONB, nullable=False)  # Store the full event data
 

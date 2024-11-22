@@ -29,19 +29,42 @@ def datetime_handler(obj):
 async def receive_analytics(request: Request) -> AnalyticsResponse:
     """
     Receive a batch of analytics events.
+    Handles both raw and gzip compressed JSON data.
     """
-    # Force print for debugging
+    
     print(f"\n=== NEW ANALYTICS REQUEST ===")
     
     try:
-
         # Get the raw body
         body = await request.body()
-        body_str = body.decode()
+        
+        # Pretty print the raw request body
+        try:
+            # Try to decode and format as JSON first
+            formatted_body = json.dumps(json.loads(body), indent=2)
+            print("Request body:")
+            print(formatted_body)
+        except json.JSONDecodeError:
+            # If not valid JSON, print raw bytes
+            print("Raw request body:")
+            print(body)
+
+        # Check if content is gzip compressed
+        if request.headers.get("content-encoding") == "gzip":
+            import gzip
+            try:
+                body_str = gzip.decompress(body).decode()
+            except Exception as e:
+                print(f"Gzip decompression error: {e}")
+                logger.error(f"Gzip decompression error: {e}")
+                raise HTTPException(status_code=400, detail="Invalid gzip compression")
+        else:
+            body_str = body.decode()
         
         # Parse the body
         try:
             data = json.loads(body_str)
+
         except json.JSONDecodeError as e:
             print(f"JSON decode error: {e}")
             logger.error(f"JSON decode error: {e}")
@@ -50,8 +73,7 @@ async def receive_analytics(request: Request) -> AnalyticsResponse:
         # Validate the data as a BatchAnalyticsRequest
         try:
             request_data = BatchAnalyticsRequest(**data)
-        
-                
+            
         except Exception as e:
             print(f"Validation error: {e}")
             logger.error(f"Validation error: {e}")
@@ -61,7 +83,11 @@ async def receive_analytics(request: Request) -> AnalyticsResponse:
         # Process the events
         events_processed = len(request_data.events)
 
-        # Store the events
+        # TODO: Implement processing / data washing
+        # For now, we'll just return the number of events processed
+        # success = True
+
+        # Store the events - to be implemented after processing / data washing
         storage = get_storage()
         events_as_dicts = [event.model_dump() for event in request_data.events]
         success = await storage.store_events(events_as_dicts)

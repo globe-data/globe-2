@@ -3,21 +3,24 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "build": "tsc",
-    "watch": "tsc -w",
-    "dev": "concurrently \"npm run watch\" \"python -m uvicorn app.main:app --reload\"",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "NODE_ENV=production node build.js",
+    "dev": "NODE_ENV=development node build.js",
+    "test": "jest"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "@types/node": "^22.9.0",
     "concurrently": "^8.0.1",
+    "dotenv": "^16.4.5",
+    "esbuild": "^0.24.0",
     "openapi-typescript-codegen": "^0.29.0",
     "typescript": "^5.6.3"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.46.1",
     "@types/pako": "^2.0.3",
     "pako": "^2.1.0",
     "zod": "^3.23.8"

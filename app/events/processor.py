@@ -30,11 +30,11 @@ class EventProcessor:
         
         return event
 
-    def serialize_event(self, event: BaseEvent) -> bytes:
+    def seriaolize_event(self, event: BaseEvent) -> bytes:
         serializer = self.serializers.get(event.event_type)
         if serializer:
-            return serializer(event.dict(), None)
-        return json.dumps(event.dict()).encode('utf-8') 
+            return serializer(event.model_dump(), None)
+        return json.dumps(event.model_dump()).encode('utf-8') 
 
 async def process_events(events):
     # logger.info("Processing events", extra={"count": len(events)})
