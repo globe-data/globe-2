@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { EventSchemas, VisibilityState, AnalyticsEvent } from "./types/events";
+import {
+  EventSchemas,
+  VisibilityState,
+  AnalyticsEvent,
+  DeviceSchemas,
+} from "./types/events";
 import { createClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from "uuid";
 
@@ -20,6 +25,32 @@ interface PrivacySettings {
     analytics: boolean;
     advertising: boolean;
   };
+}
+
+interface NavigatorWithUserAgentData extends Navigator {
+  userAgentData?: {
+    brands: { brand: string }[];
+  };
+}
+
+interface NetworkInformation extends EventTarget {
+  readonly effectiveType: "2g" | "3g" | "4g" | "5g";
+  readonly downlink: number;
+  readonly rtt: number;
+  readonly saveData: boolean;
+  readonly type:
+    | "bluetooth"
+    | "cellular"
+    | "ethernet"
+    | "none"
+    | "wifi"
+    | "wimax"
+    | "other"
+    | "unknown";
+}
+
+interface NavigatorWithConnection extends Navigator {
+  connection?: NetworkInformation;
 }
 
 /**
@@ -93,6 +124,7 @@ class Analytics {
   private initialize(): void {
     this.initializeUser();
     this.initializePrivacySettings();
+    this.fetchBrowserData();
     this.setupTracking();
     this.setupEventListeners();
     this.setupDOMListeners();
@@ -107,10 +139,23 @@ class Analytics {
     if (sessionStorage.getItem("tracking_declined") || this.authWindowOpened) {
       return;
     }
-
+    // Mock user data for development/testing
     const {
       data: { user },
-    } = await this.supabase.auth.getUser();
+    } = {
+      data: {
+        user: {
+          id: "test-user-123",
+          email: "test@example.com",
+          created_at: new Date().toISOString(),
+          last_sign_in_at: new Date().toISOString(),
+          user_metadata: {
+            full_name: "Test User",
+            avatar_url: "https://example.com/avatar.png",
+          },
+        },
+      },
+    };
 
     if (!user) {
       this.authWindowOpened = true;
@@ -158,6 +203,11 @@ class Analytics {
         "performance",
         "visibility",
         "custom",
+        "resource",
+        "idle",
+        "location",
+        "tab",
+        "storage",
       ],
       ipAnonymization: false,
       sensitiveDataFields: [],
@@ -167,6 +217,52 @@ class Analytics {
         analytics: true,
         advertising: true,
       },
+    };
+  }
+
+  // -------- Browser Data Fetching Methods --------
+
+  private fetchBrowserData(): void {
+    const browserData: z.infer<typeof DeviceSchemas.browserData> = {
+      user_agent: navigator.userAgent,
+      language: navigator.language,
+      platform: navigator.userAgent || "unknown",
+      vendor:
+        (navigator as NavigatorWithUserAgentData).userAgentData?.brands[0]
+          ?.brand || "unknown",
+      cookies_enabled: navigator.cookieEnabled,
+      time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      time_zone_offset: new Date().getTimezoneOffset(),
+    };
+
+    const networkData: z.infer<typeof DeviceSchemas.networkData> = {
+      connection_type:
+        (navigator as NavigatorWithConnection).connection?.type || "unknown",
+      effective_type:
+        (navigator as NavigatorWithConnection).connection?.effectiveType ||
+        "unknown",
+      downlink:
+        (navigator as NavigatorWithConnection).connection?.downlink || 0,
+      rtt: (navigator as NavigatorWithConnection).connection?.rtt || 0,
+      save_data:
+        (navigator as NavigatorWithConnection).connection?.saveData || false,
+      anonymize_ip: this.privacySettings.ipAnonymization,
+    };
+
+    const deviceData: z.infer<typeof DeviceSchemas.deviceData> = {
+      screen_resolution: {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      },
+      color_depth: window.screen.colorDepth,
+      pixel_ratio: window.devicePixelRatio,
+
+      // TODO properly define the below
+
+      max_touch_points: navigator.maxTouchPoints || 0,
+      memory: (navigator as any).deviceMemory || 0,
+      hardware_concurrency: navigator.hardwareConcurrency || 0,
+      device_memory: (navigator as any).deviceMemory || 0,
     };
   }
 

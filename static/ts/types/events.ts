@@ -17,7 +17,6 @@ const BrowserInfo = z.object({
   vendor: z.string(),
   cookies_enabled: z.boolean(),
   do_not_track: z.boolean().optional(),
-  plugins: z.array(z.string()),
   time_zone: z.string(),
   time_zone_offset: z.number(),
 });
@@ -254,4 +253,10 @@ export const EventSchemas = {
   storage: StorageEvent,
   resource: ResourceEvent,
   idle: IdleEvent,
+} as const;
+
+export const DeviceSchemas = {
+  browserData: BrowserInfo,
+  networkData: NetworkInfo,
+  deviceData: DeviceInfo,
 } as const;

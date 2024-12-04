@@ -59,7 +59,7 @@ class AuthWebhookHandler {
           ...response,
         },
         "*"
-      ); // In production, replace '*' with your actual domain
+      ); // In production, replace '*' with actual domain
     }
   }
 }
