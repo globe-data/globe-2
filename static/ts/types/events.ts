@@ -27,7 +27,7 @@ const NetworkInfo = z.object({
   effective_type: z.string(),
   rtt: z.number(),
   save_data: z.boolean(),
-  ip: z.string().optional(),
+  anonymize_ip: z.boolean(),
 });
 
 const DeviceInfo = z.object({

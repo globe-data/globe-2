@@ -264,6 +264,12 @@ class Analytics {
       hardware_concurrency: navigator.hardwareConcurrency || 0,
       device_memory: (navigator as any).deviceMemory || 0,
     };
+
+    // this.addEventToQueue("device", {
+    //   browser: browserData,
+    //   network: networkData,
+    //   device: deviceData,
+    // });
   }
 
   // -------- Event Processing Methods --------
