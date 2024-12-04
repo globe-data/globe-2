@@ -2,6 +2,19 @@ from typing import Optional, List, Union
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Literal
+from enum import Enum
+
+class EventType(str, Enum):
+    PAGEVIEW = "pageview"
+    CLICK = "click"
+    SCROLL = "scroll"
+    MEDIA = "media"
+    FORM = "form"
+    CONVERSION = "conversion"
+    ERROR = "error"
+    VISIBILITY = "visibility"
+    PERFORMANCE = "performance"
+    CUSTOM = "custom"
 
 class BaseEvent(BaseModel):
     globe_id: str

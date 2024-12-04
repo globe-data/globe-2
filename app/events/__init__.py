@@ -9,9 +9,9 @@ from app.events.schemas.events import (
     Error,
     Performance,
     Event,
-    EVENT_TYPE_MAPPING
+    EVENT_TYPE_MAPPING,
+    EventType
 )
-
 
 __all__ = [
     'BaseEvent',
@@ -24,5 +24,6 @@ __all__ = [
     'Error',
     'Performance',
     'Event',
-    'EVENT_TYPE_MAPPING'
+    'EVENT_TYPE_MAPPING',
+    'EventType'
 ]

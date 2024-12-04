@@ -10,6 +10,40 @@ const BaseEvent = z.object({
   event_type: z.string(),
 });
 
+const BrowserInfo = z.object({
+  user_agent: z.string(),
+  language: z.string(),
+  platform: z.string(),
+  vendor: z.string(),
+  cookies_enabled: z.boolean(),
+  do_not_track: z.boolean().optional(),
+  plugins: z.array(z.string()),
+  time_zone: z.string(),
+  time_zone_offset: z.number(),
+});
+
+const NetworkInfo = z.object({
+  connection_type: z.string(),
+  downlink: z.number(),
+  effective_type: z.string(),
+  rtt: z.number(),
+  save_data: z.boolean(),
+  ip: z.string().optional(),
+});
+
+const DeviceInfo = z.object({
+  screen_resolution: z.object({
+    width: z.number(),
+    height: z.number(),
+  }),
+  color_depth: z.number(),
+  pixel_ratio: z.number(),
+  max_touch_points: z.number(),
+  memory: z.number().optional(),
+  hardware_concurrency: z.number().optional(),
+  device_memory: z.number().optional(),
+});
+
 const PageViewEvent = BaseEvent.extend({
   event_type: z.literal("pageview"),
   data: z.object({
@@ -121,8 +155,65 @@ const CustomEvent = BaseEvent.extend({
   data: z.record(z.unknown()),
 });
 
-// Export the combined Event type
-export type Event =
+const LocationEvent = BaseEvent.extend({
+  event_type: z.literal("location"),
+  data: z.object({
+    latitude: z.number().optional(),
+    longitude: z.number().optional(),
+    accuracy: z.number().optional(),
+    country: z.string().optional(),
+    region: z.string().optional(),
+    city: z.string().optional(),
+    timezone: z.string(),
+  }),
+});
+
+const TabEvent = BaseEvent.extend({
+  event_type: z.literal("tab"),
+  data: z.object({
+    action: z.enum(["open", "close", "focus", "blur"]),
+    tab_id: z.string(),
+    window_id: z.string(),
+    previous_tab: z.string().optional(),
+    time_since_last_focus: z.number().optional(),
+  }),
+});
+
+const StorageEvent = BaseEvent.extend({
+  event_type: z.literal("storage"),
+  data: z.object({
+    storage_type: z.enum(["local", "session", "indexed_db", "cache"]),
+    action: z.enum(["read", "write", "delete", "clear"]),
+    key: z.string().optional(),
+    size: z.number().optional(),
+    quota: z.number().optional(),
+  }),
+});
+
+const ResourceEvent = BaseEvent.extend({
+  event_type: z.literal("resource"),
+  data: z.object({
+    resource_type: z.enum(["image", "script", "stylesheet", "font", "other"]),
+    url: z.string(),
+    duration: z.number(),
+    transfer_size: z.number(),
+    compression_ratio: z.number().optional(),
+    cache_hit: z.boolean().optional(),
+    priority: z.string(),
+  }),
+});
+
+const IdleEvent = BaseEvent.extend({
+  event_type: z.literal("idle"),
+  data: z.object({
+    idle_time: z.number(),
+    last_interaction: z.string(),
+    is_idle: z.boolean(),
+  }),
+});
+
+// Export the combined AnalyticsEvent type
+export type AnalyticsEvent =
   | z.infer<typeof PageViewEvent>
   | z.infer<typeof ClickEvent>
   | z.infer<typeof ScrollEvent>
@@ -132,10 +223,18 @@ export type Event =
   | z.infer<typeof ErrorEvent>
   | z.infer<typeof PerformanceEvent>
   | z.infer<typeof VisibilityEvent>
-  | z.infer<typeof CustomEvent>;
+  | z.infer<typeof CustomEvent>
+  | z.infer<typeof LocationEvent>
+  | z.infer<typeof TabEvent>
+  | z.infer<typeof StorageEvent>
+  | z.infer<typeof ResourceEvent>
+  | z.infer<typeof IdleEvent>;
 
 export type BatchAnalyticsRequest = {
-  events: Event[];
+  events: AnalyticsEvent[];
+  browser: z.infer<typeof BrowserInfo>;
+  network: z.infer<typeof NetworkInfo>;
+  device: z.infer<typeof DeviceInfo>;
 };
 
 // Export the schemas for validation
@@ -150,4 +249,9 @@ export const EventSchemas = {
   performance: PerformanceEvent,
   visibility: VisibilityEvent,
   custom: CustomEvent,
+  location: LocationEvent,
+  tab: TabEvent,
+  storage: StorageEvent,
+  resource: ResourceEvent,
+  idle: IdleEvent,
 } as const;

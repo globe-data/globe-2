@@ -19,13 +19,20 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+origins = [
+    "chrome-extension://*",
+    "moz-extension://*",
+    "safari-extension://*",
+    "safari-web-extension://*",
+    "http://localhost",  # For testing
+]
+
 app.add_middleware(
     CORSMiddleware,
-    # allow_origins=settings.ALLOWED_ORIGINS,
-    allow_origins=["*"],  # TODO: Change this
-    allow_credentials=settings.ALLOW_CREDENTIALS,
-    allow_methods=settings.ALLOWED_METHODS,
-    allow_headers=settings.ALLOWED_HEADERS,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Mount static files

@@ -5,7 +5,11 @@
   "scripts": {
     "build": "NODE_ENV=production node build.js",
     "dev": "NODE_ENV=development node build.js",
-    "test": "jest"
+    "test": "jest",
+    "build:chrome": "webpack --env browser=chrome",
+    "build:firefox": "webpack --env browser=firefox",
+    "build:safari": "webpack --env browser=safari",
+    "build:all": "npm run build:chrome && npm run build:firefox && npm run build:safari"
   },
   "keywords": [],
   "author": "",
@@ -23,6 +27,7 @@
     "@supabase/supabase-js": "^2.46.1",
     "@types/pako": "^2.0.3",
     "pako": "^2.1.0",
+    "uuid": "^11.0.3",
     "zod": "^3.23.8"
   }
 }

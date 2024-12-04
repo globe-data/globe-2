@@ -59,6 +59,27 @@ class SupabaseAnalytics(AnalyticsStorage):
     async def store_events(self, event_data: list[dict]) -> bool:
         """Store multiple events in their appropriate tables"""
         try:
+            # First, filter out any events with IDs that already exist
+            existing_event_ids = set()
+            for event in event_data:
+                result = self.supabase.table('analytics_events')\
+                    .select('event_id')\
+                    .eq('event_id', event['event_id'])\
+                    .execute()
+                if result.data:
+                    existing_event_ids.add(event['event_id'])
+                    logger.warning(f"Skipping duplicate event ID: {event['event_id']}")
+
+            # Filter out events with existing IDs
+            filtered_events = [
+                event for event in event_data 
+                if event['event_id'] not in existing_event_ids
+            ]
+
+            if not filtered_events:
+                logger.warning("All events were duplicates, nothing to insert")
+                return True
+
             # Insert base events first
             base_events = [{
                 'globe_id': event.get('globe_id', '03c04930-0c1b-4a2a-96cd-933dd8d7914c'),
@@ -67,7 +88,7 @@ class SupabaseAnalytics(AnalyticsStorage):
                 'session_id': event['session_id'],
                 'client_timestamp': event['client_timestamp'],
                 'event_type': event['event_type'],
-            } for event in event_data]
+            } for event in filtered_events]
 
             base_events = [self._prepare_event_data(event) for event in base_events]
             
@@ -79,7 +100,7 @@ class SupabaseAnalytics(AnalyticsStorage):
 
             # Group and prepare event-specific data
             event_type_groups = {}
-            for event in event_data:
+            for event in filtered_events:
                 event_type = event['event_type']
                 if event_type not in event_type_groups:
                     event_type_groups[event_type] = []
@@ -113,7 +134,8 @@ class SupabaseAnalytics(AnalyticsStorage):
             return True
             
         except Exception as e:
-            logger.error(f"Failed to store events batch: {str(e)}")
+            event_types = list(event_type_groups.keys()) if 'event_type_groups' in locals() else []
+            logger.error(f"Failed to store events batch in Supabase. Event types being processed: {event_types}. Error: {str(e)}")
             return False
     
     def _prepare_event_data(self, event: dict) -> dict:

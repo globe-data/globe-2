@@ -11,7 +11,6 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-# Add a stream handler if none exists
 if not logger.handlers:
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(logging.DEBUG)
@@ -19,7 +18,6 @@ if not logger.handlers:
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-# Add this function at the top of your file
 def datetime_handler(obj):
     if isinstance(obj, datetime):
         return obj.isoformat()
@@ -32,30 +30,17 @@ async def receive_analytics(request: Request) -> AnalyticsResponse:
     Handles both raw and gzip compressed JSON data.
     """
     
-    print(f"\n=== NEW ANALYTICS REQUEST ===")
-    
     try:
         # Get the raw body
         body = await request.body()
-        
-        # Pretty print the raw request body
-        try:
-            # Try to decode and format as JSON first
-            formatted_body = json.dumps(json.loads(body), indent=2)
-            print("Request body:")
-            print(formatted_body)
-        except json.JSONDecodeError:
-            # If not valid JSON, print raw bytes
-            print("Raw request body:")
-            print(body)
 
         # Check if content is gzip compressed
         if request.headers.get("content-encoding") == "gzip":
             import gzip
             try:
                 body_str = gzip.decompress(body).decode()
+                logger.debug(f"Decompressed gzip request body")
             except Exception as e:
-                print(f"Gzip decompression error: {e}")
                 logger.error(f"Gzip decompression error: {e}")
                 raise HTTPException(status_code=400, detail="Invalid gzip compression")
         else:
@@ -66,7 +51,6 @@ async def receive_analytics(request: Request) -> AnalyticsResponse:
             data = json.loads(body_str)
 
         except json.JSONDecodeError as e:
-            print(f"JSON decode error: {e}")
             logger.error(f"JSON decode error: {e}")
             raise HTTPException(status_code=400, detail="Invalid JSON format")
 
@@ -75,7 +59,6 @@ async def receive_analytics(request: Request) -> AnalyticsResponse:
             request_data = BatchAnalyticsRequest(**data)
             
         except Exception as e:
-            print(f"Validation error: {e}")
             logger.error(f"Validation error: {e}")
             logger.error(f"Received data structure: {data}")
             raise HTTPException(status_code=400, detail=str(e))
@@ -86,18 +69,30 @@ async def receive_analytics(request: Request) -> AnalyticsResponse:
         # TODO: Implement processing / data washing
         # For now, we'll just return the number of events processed
         # success = True
+        # moved storage to within privacy processing
+        # MAYBE: temp
 
-        # Store the events - to be implemented after processing / data washing
-        storage = get_storage()
-        events_as_dicts = [event.model_dump() for event in request_data.events]
-        success = await storage.store_events(events_as_dicts)
-
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to store events")
+        # Get valid event types from database (or hardcode if needed)
+        VALID_EVENT_TYPES = {
+            'pageview', 'click', 'scroll', 'media', 
+            'form', 'conversion', 'error', 'performance'
+        }
+        
+        # Filter events before storage
+        filtered_events = [
+            event.model_dump() for event in request_data.events 
+            if event.event_type in VALID_EVENT_TYPES
+        ]
+        
+        if not filtered_events:
+            return AnalyticsResponse(
+                status="success",
+                events_processed=0
+            )
         
         return AnalyticsResponse(
             status="success",
-            events_processed=events_processed
+            events_processed=len(filtered_events)
         )
 
     except HTTPException:
