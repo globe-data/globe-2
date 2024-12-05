@@ -1,9 +1,9 @@
-from config import Settings, setup_logger
+from app.config import Settings, setup_logger
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import uvicorn
-from api.router import router
+from app.api.router import router
 
 settings = Settings()
 logger = setup_logger(settings.log_level)
@@ -32,7 +32,7 @@ app.add_middleware(
 
 if __name__ == "__main__":
     uvicorn.run(
-        "main:app",
+        "app.main:app",
         host="0.0.0.0", 
         port=8000,
         reload=True,

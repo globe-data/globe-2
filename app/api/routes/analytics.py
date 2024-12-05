@@ -1,56 +1,58 @@
-from fastapi import APIRouter, Request
-from config import logger
+from fastapi import APIRouter, HTTPException, Body, Response, status, Request
+from app.api.models import AnalyticsBatch, AnalyticsBatchResponse
+from app.config import logger
 import json
+
 analytics_router = APIRouter(
     tags=["analytics"]
 )
 
-@analytics_router.post("/batch", 
-    summary="Process analytics batch",
+@analytics_router.post("/batch",
+    summary="Process analytics batch", 
     description="Endpoint to process a batch of analytics data",
-    response_description="Returns confirmation of batch processing"
-)
-async def process_batch(request: Request):
-    data = await request.json()
-    
-    # Create summary of the analytics batch
-    summary = {
-        "total_events": len(data.get("events", [])),
-        "event_types": {},
-        "session_summary": {},
-        "browser_info": {
-            "platform": data.get("browser", {}).get("platform"),
-            "language": data.get("browser", {}).get("language"),
-        },
-        "device_info": {
-            "screen_resolution": data.get("device", {}).get("screen_resolution"),
-            "device_memory": f"{data.get('device', {}).get('device_memory')}GB",
-            "connection_type": data.get("network", {}).get("connection_type")
-        }
+    response_description="Returns confirmation of batch model validation",
+    response_model=AnalyticsBatchResponse,
+    responses={
+        201: {"description": "Analytics batch processed successfully"},
+        400: {"description": "Invalid batch data"},
+        422: {"description": "Validation error"}
     }
-    
-    # Analyze events
-    for event in data.get("events", []):
-        # Count event types
-        event_type = event.get("event_type")
-        summary["event_types"][event_type] = summary["event_types"].get(event_type, 0) + 1
-        
-        # Track session activity
-        session_id = event.get("session_id")
-        if session_id not in summary["session_summary"]:
-            summary["session_summary"][session_id] = {
-                "globe_id": event.get("globe_id"),
-                "event_count": 0,
-                "first_event": event.get("timestamp"),
-                "last_event": event.get("timestamp")
-            }
-        
-        session = summary["session_summary"][session_id]
-        session["event_count"] += 1
-        session["last_event"] = max(session["last_event"], event.get("timestamp"))
+)
+async def process_batch(
+    batch: AnalyticsBatch = Body(...),
+    request: Request = Request,
+    response: Response = Response
+):
+    logger.info(f"Request IP: {request.client.host}")
 
-    logger.info(f"Processed batch with {summary['total_events']} events")
-    return summary
+    try:
+        if not batch.events:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Batch must contain events"
+            )
+
+        batch_dict = batch.model_dump()
+        # Convert the dict to be JSON serializable
+        batch_dict = json.loads(json.dumps(batch_dict, default=str))
+        logger.info(f"Received analytics batch: {json.dumps(batch_dict, indent=2)}")
+
+        # Set status code and return response
+        response.status_code = status.HTTP_201_CREATED
+        return AnalyticsBatchResponse(success=True)
+        
+    except ValueError as e:
+        logger.error(f"ValueError occurred: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error occurred: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred processing the analytics batch"
+        )
 
 # Make sure to export the router
 __all__ = ["analytics_router"]

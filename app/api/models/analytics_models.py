@@ -121,18 +121,6 @@ class NetworkInfo(BaseModel):
     save_data: bool
     anonymize_ip: bool
 
-class SystemInfo(BaseModel):
-    """Model containing combined system information.
-    
-    Attributes:
-        browser: Browser-specific information
-        device: Device-specific information
-        network: Network connection information
-    """
-    browser: BrowserInfo
-    device: DeviceInfo
-    network: NetworkInfo
-
 ## ANALYTICS EVENT DATA
 
 class PageViewData(BaseModel):
@@ -271,21 +259,26 @@ class VisibilityData(BaseModel):
         time_visible: Time spent in visible state
     """
     visibility_state: VisibilityState
-    time_visible: float
 
 class LocationData(BaseModel):
-    """Model representing data for a location change event.
+    """Model representing data for a location/geolocation event.
     
     Attributes:
-        path: URL path
-        hash: URL hash fragment
-        search: URL search parameters
-        state: History state object
+        latitude: Geographic latitude coordinate
+        longitude: Geographic longitude coordinate
+        accuracy: Accuracy of coordinates in meters
+        country: Country name
+        region: Region/state name
+        city: City name
+        timezone: Timezone identifier
     """
-    path: str
-    hash: str
-    search: str
-    state: str
+    latitude: float
+    longitude: float
+    accuracy: float
+    country: str
+    region: str
+    city: str
+    timezone: str
 
 class TabData(BaseModel):
     """Model representing data for a tab event.
@@ -418,6 +411,7 @@ class IdleEvent(Event):
 class CustomEvent(Event):
     """Event model for custom events with arbitrary data."""
     event_type: EventTypes = EventTypes.CUSTOM
+    name: str
     data: Dict[str, Any]
 
 ## REQUEST/RESPONSE MODELS
@@ -432,6 +426,10 @@ class AnalyticsBatch(BaseModel):
         network: Network information
     """
     events: List[Event]
-    browser: SystemInfo
+    browser: BrowserInfo
     device: DeviceInfo
     network: NetworkInfo
+
+class AnalyticsBatchResponse(BaseModel):
+    """Model representing a response to an analytics batch request."""
+    success: bool
