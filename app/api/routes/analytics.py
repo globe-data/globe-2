@@ -20,7 +20,7 @@ analytics_router = APIRouter(
 async def process_batch(
     batch: AnalyticsBatch = Body(...),
     response: Response = Response
-):
+) -> AnalyticsBatchResponse:
     try:
         if not batch.events:
             raise HTTPException(
@@ -33,11 +33,9 @@ async def process_batch(
             "events": batch.events
         })
 
-
         # Return success even if some events were dropped
         response.status_code = status.HTTP_201_CREATED
-        # return AnalyticsBatchResponse(success=True)
-        return { "validated_events": len(batch.events), "dropped_events": 0 }
+        return AnalyticsBatchResponse(success=True)
 
     except Exception as e:
         logger.error(f"Unexpected error occurred: {str(e)}", exc_info=True)
