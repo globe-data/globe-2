@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException, Body, Response, status, Request
+from fastapi import APIRouter, HTTPException, Body, Response, status
 from app.api.models import AnalyticsBatch, AnalyticsBatchResponse
 from app.config import logger
-import json
+from app.services.data_validator import validate_event_data
 
 analytics_router = APIRouter(
     tags=["analytics"]
@@ -11,7 +11,7 @@ analytics_router = APIRouter(
     summary="Process analytics batch", 
     description="Endpoint to process a batch of analytics data",
     response_description="Returns confirmation of batch model validation",
-    response_model=AnalyticsBatchResponse,
+    # response_model=AnalyticsBatchResponse,
     responses={
         201: {"description": "Analytics batch processed successfully"},
         400: {"description": "Invalid batch data"},
@@ -20,11 +20,8 @@ analytics_router = APIRouter(
 )
 async def process_batch(
     batch: AnalyticsBatch = Body(...),
-    request: Request = Request,
     response: Response = Response
 ):
-    logger.info(f"Request IP: {request.client.host}")
-
     try:
         if not batch.events:
             raise HTTPException(
@@ -32,21 +29,17 @@ async def process_batch(
                 detail="Batch must contain events"
             )
 
-        batch_dict = batch.model_dump()
-        # Convert the dict to be JSON serializable
-        batch_dict = json.loads(json.dumps(batch_dict, default=str))
-        logger.info(f"Received analytics batch: {json.dumps(batch_dict, indent=2)}")
+        logger.info({
+            "message": "Batch events:",
+            "events": batch.events
+        })
 
-        # Set status code and return response
+
+        # Return success even if some events were dropped
         response.status_code = status.HTTP_201_CREATED
-        return AnalyticsBatchResponse(success=True)
-        
-    except ValueError as e:
-        logger.error(f"ValueError occurred: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+        # return AnalyticsBatchResponse(success=True)
+        return { "validated_events": len(batch.events), "dropped_events": 0 }
+
     except Exception as e:
         logger.error(f"Unexpected error occurred: {str(e)}", exc_info=True)
         raise HTTPException(

@@ -1,4 +1,5 @@
 from .analytics_models import (
+    EVENT_TYPE_TO_MODEL, EVENT_MODELS,
     EventTypes, VisibilityState, Event, BrowserInfo, ScreenResolution,
     DeviceInfo, NetworkInfo, PageViewData, ClickData,
     ScrollData, MediaData, FormData, ConversionData, ErrorData,
@@ -10,6 +11,7 @@ from .analytics_models import (
 )
 
 __all__ = [
+    "EVENT_TYPE_TO_MODEL", "EVENT_MODELS",
     "EventTypes", "VisibilityState", "Event", "BrowserInfo", "ScreenResolution",
     "DeviceInfo", "NetworkInfo", "PageViewData", "ClickData",
     "ScrollData", "MediaData", "FormData", "ConversionData", "ErrorData",

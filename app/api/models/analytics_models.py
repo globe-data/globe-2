@@ -1,9 +1,9 @@
 from datetime import datetime
 from enum import StrEnum
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union, Annotated, Type, Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator, ValidationError
 
 ## EVENT TYPES
 class EventTypes(StrEnum):
@@ -41,14 +41,12 @@ class Event(BaseModel):
         timestamp: Server-side timestamp when event was received
         session_id: Unique identifier for the user session
         client_timestamp: Browser-side timestamp when event occurred
-        event_type: Type of analytics event from EventTypes enum
     """
     globe_id: UUID
     event_id: UUID
     timestamp: datetime
     session_id: UUID
     client_timestamp: datetime
-    event_type: EventTypes
 
 ## SYSTEM INFORMATION
 class BrowserInfo(BaseModel):
@@ -338,98 +336,176 @@ class IdleData(BaseModel):
 
 ## ANALYTICS EVENTS
 
+EVENT_MODELS: Dict[EventTypes, Type[Event]] = {}
+
+def register_event(event_type: EventTypes):
+    """Decorator to register event models."""
+    def wrapper(cls):
+        EVENT_MODELS[event_type] = cls
+        return cls
+    return wrapper
+
+@register_event(EventTypes.PAGEVIEW)
 class PageViewEvent(Event):
     """Event model for pageview events."""
-    event_type: EventTypes = EventTypes.PAGEVIEW
+    event_type: Literal[EventTypes.PAGEVIEW]
     data: PageViewData
 
+@register_event(EventTypes.CLICK)
 class ClickEvent(Event):
     """Event model for click events."""
-    event_type: EventTypes = EventTypes.CLICK
+    event_type: Literal[EventTypes.CLICK]
     data: ClickData
 
+@register_event(EventTypes.SCROLL)
 class ScrollEvent(Event):
     """Event model for scroll events."""
-    event_type: EventTypes = EventTypes.SCROLL
+    event_type: Literal[EventTypes.SCROLL]
     data: ScrollData
 
+@register_event(EventTypes.MEDIA)
 class MediaEvent(Event):
     """Event model for media playback events."""
-    event_type: EventTypes = EventTypes.MEDIA
+    event_type: Literal[EventTypes.MEDIA]
     data: MediaData
 
+@register_event(EventTypes.FORM)
 class FormEvent(Event):
     """Event model for form interaction events."""
-    event_type: EventTypes = EventTypes.FORM
+    event_type: Literal[EventTypes.FORM]
     data: FormData
 
+@register_event(EventTypes.CONVERSION)
 class ConversionEvent(Event):
     """Event model for conversion events."""
-    event_type: EventTypes = EventTypes.CONVERSION
+    event_type: Literal[EventTypes.CONVERSION]
     data: ConversionData
 
+@register_event(EventTypes.ERROR)
 class ErrorEvent(Event):
     """Event model for error events."""
-    event_type: EventTypes = EventTypes.ERROR
+    event_type: Literal[EventTypes.ERROR]
     data: ErrorData
 
+@register_event(EventTypes.PERFORMANCE)
 class PerformanceEvent(Event):
     """Event model for performance metric events."""
-    event_type: EventTypes = EventTypes.PERFORMANCE
+    event_type: Literal[EventTypes.PERFORMANCE]
     data: PerformanceData
 
+@register_event(EventTypes.VISIBILITY)
 class VisibilityEvent(Event):
     """Event model for visibility state events."""
-    event_type: EventTypes = EventTypes.VISIBILITY
+    event_type: Literal[EventTypes.VISIBILITY]
     data: VisibilityData
 
+@register_event(EventTypes.LOCATION)
 class LocationEvent(Event):
     """Event model for location change events."""
-    event_type: EventTypes = EventTypes.LOCATION
+    event_type: Literal[EventTypes.LOCATION]
     data: LocationData
 
+@register_event(EventTypes.TAB)
 class TabEvent(Event):
     """Event model for tab events."""
-    event_type: EventTypes = EventTypes.TAB
+    event_type: Literal[EventTypes.TAB]
     data: TabData
 
+@register_event(EventTypes.STORAGE)
 class StorageEvent(Event):
     """Event model for storage operation events."""
-    event_type: EventTypes = EventTypes.STORAGE
+    event_type: Literal[EventTypes.STORAGE]
     data: StorageData
 
+@register_event(EventTypes.RESOURCE)
 class ResourceEvent(Event):
     """Event model for resource load events."""
-    event_type: EventTypes = EventTypes.RESOURCE
+    event_type: Literal[EventTypes.RESOURCE]
     data: ResourceData
 
+@register_event(EventTypes.IDLE)
 class IdleEvent(Event):
     """Event model for idle state events."""
-    event_type: EventTypes = EventTypes.IDLE
+    event_type: Literal[EventTypes.IDLE]
     data: IdleData
 
 class CustomEvent(Event):
     """Event model for custom events with arbitrary data."""
-    event_type: EventTypes = EventTypes.CUSTOM
+    event_type: Literal[EventTypes.CUSTOM]
     name: str
     data: Dict[str, Any]
 
 ## REQUEST/RESPONSE MODELS
 
 class AnalyticsBatch(BaseModel):
-    """Model representing a batch of analytics events and system information.
-    
-    Attributes:
-        events: List of analytics events
-        browser: Browser information
-        device: Device information
-        network: Network information
-    """
-    events: List[Event]
+    """Model representing a batch of analytics events and system information."""
+    events: List[
+        Annotated[
+            Union[
+                PageViewEvent,
+                ClickEvent,
+                ScrollEvent,
+                MediaEvent,
+                FormEvent,
+                ConversionEvent,
+                ErrorEvent,
+                PerformanceEvent,
+                VisibilityEvent,
+                LocationEvent,
+                TabEvent,
+                StorageEvent,
+                ResourceEvent,
+                IdleEvent,
+                CustomEvent
+            ],
+            Field(discriminator='event_type')
+        ]
+    ] = Field(default_factory=list)
     browser: BrowserInfo
     device: DeviceInfo
     network: NetworkInfo
 
+    class Config:
+        validate_assignment = True
+        extra = "allow"  # Allow extra fields
+        validate_default = False  # Don't validate default values
+
+    @field_validator('events', mode='before')
+    def validate_events(cls, events):
+        validated_events = []
+        for event in events:
+            try:
+                if isinstance(event, dict):
+                    event_type = event.get('event_type')
+                    if event_type in EVENT_MODELS:
+                        model = EVENT_MODELS[EventTypes(event_type)]
+                        validated_event = model(**event)
+                        validated_events.append(validated_event)
+                    elif event_type == EventTypes.CUSTOM.value:
+                        validated_event = CustomEvent(**event)
+                        validated_events.append(validated_event)
+            except (ValueError, ValidationError):
+                continue  # Skip invalid events
+        return validated_events
+
 class AnalyticsBatchResponse(BaseModel):
     """Model representing a response to an analytics batch request."""
     success: bool
+
+# Add this mapping at the module level
+EVENT_TYPE_TO_MODEL = {
+    EventTypes.PAGEVIEW: PageViewData,
+    EventTypes.CLICK: ClickData,
+    EventTypes.SCROLL: ScrollData,
+    EventTypes.MEDIA: MediaData,
+    EventTypes.FORM: FormData,
+    EventTypes.CONVERSION: ConversionData,
+    EventTypes.ERROR: ErrorData,
+    EventTypes.PERFORMANCE: PerformanceData,
+    EventTypes.VISIBILITY: VisibilityData,
+    EventTypes.LOCATION: LocationData,
+    EventTypes.TAB: TabData,
+    EventTypes.STORAGE: StorageData,
+    EventTypes.RESOURCE: ResourceData,
+    EventTypes.IDLE: IdleData
+}

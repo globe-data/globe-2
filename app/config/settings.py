@@ -4,5 +4,5 @@ class Settings(BaseSettings):
     app_name: str = "Globe Data"
     version: str = "0.1.0"
     debug: bool = True
-    log_level: str = "INFO"
+    log_level: str = "DEBUG"
 
