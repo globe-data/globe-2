@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Body, Response, status
 from app.api.models import AnalyticsBatch, AnalyticsBatchResponse
 from app.config import logger
-from app.services.data_validator import validate_event_data
 
 analytics_router = APIRouter(
     tags=["analytics"]
