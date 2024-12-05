@@ -62,7 +62,7 @@ class Analytics {
   // Constants
   private readonly RATE_LIMIT_MS = 1000;
   private readonly SCROLL_DEBOUNCE_MS = 250;
-  private readonly API_URL = "http://localhost:8000/api/v1/analytics/batch";
+  private readonly API_URL = "http://localhost:8000/api/analytics/batch";
   private readonly MAX_EVENTS_BUFFER = 1000;
   private readonly MAX_EVENT_IDS = 1000;
   private readonly BATCH_THRESHOLD = 50;
