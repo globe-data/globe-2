@@ -1,73 +1,148 @@
-# Analytics Events Code Review
+# Globe Data Implementation Review
 
-## Overview
+## Current Architecture 🏗️
 
-Review of `events.ts` focusing on type safety, code organization, and reduction of duplicated concerns.
+### Strengths
 
-## Current Strengths 👍
+- Strong type system (TypeScript + Pydantic)
+- Clean event hierarchy
+- Comprehensive validation (Zod + FastAPI)
+- Clear separation of concerns
 
-1. **Clear Type Hierarchy**
+### Areas for Improvement
 
-   - Well-structured `BaseEvent`
-   - Proper inheritance patterns
+- Schema versioning needed
+- Limited metadata support
+- Incomplete validation rules
+- Magic strings need extraction to constants
 
-2. **Comprehensive Validation**
+## Privacy-First Evolution 🔐
 
-   - Complete Zod schemas
-   - Strong TypeScript integration
+### Data Ownership Layer
 
-3. **Type Discrimination**
+```graphql
+type DataOwnership {
+  contractAddress: String!
+  owner: String!
+  permissions: [Permission!]!
+  history: [OwnershipTransfer!]!
+}
+```
 
-   - Effective use of TypeScript's type system
-   - Clear event differentiation
+### Required Components
 
-4. **Organization**
+1. **Smart Contracts**
 
-   - Logical grouping of related events
-   - Clean separation of concerns
+   - Data ownership tokens (ERC-721/ERC-1155)
+   - Permission management
+   - Transfer mechanisms
 
-5. **Field Management**
+2. **GraphQL API**
 
-   - Proper optional field handling
-   - Clear required vs optional distinction
+   - Single endpoint for all data operations
+   - Real-time subscriptions for data access
+   - Granular query permissions
 
-6. **Architecture**
-   - Clean separation between event types and request types
-   - Well-structured exports
+3. **Encryption Layer**
+   - Client-side encryption
+   - Key management
+   - Secure data storage
 
-## Suggested Improvements 🤔
+## Implementation Plan 📋
 
-1. **Schema Organization**
+### Phase 1: GraphQL Migration
 
-   - Group related schemas into namespaces/modules:
-     - UI events
-     - System events
-     - Performance events
-   - Extract reusable sub-schemas (e.g., viewport dimensions)
+- Convert REST endpoints to GraphQL
+- Setup Strawberry with FastAPI
+- Implement basic resolvers
 
-2. **Type Safety Enhancements**
+### Phase 2: Ownership Integration
 
-   - Add branded types for IDs
-   - Strengthen validation for:
-     - URLs
-     - Timestamps
-     - Formatted strings
+- Deploy smart contracts
+- Add ownership models
+- Implement transfer logic
 
-3. **Documentation Needs**
+### Phase 3: Privacy Enhancement
 
-   - Add JSDoc comments for event types
-   - Include example payloads
-   - Document validation rules/constraints
+- Add encryption
+- Implement permissions
+- Setup audit logging
 
-4. **Extensibility Considerations**
+## Directory Structure
 
-   - Add metadata field to BaseEvent
-   - Implement schema versioning
+```plaintext
+app/
+├── api/
+│   ├── graphql/
+│   │   ├── schema/          # GraphQL type definitions
+│   │   ├── resolvers/       # Query/mutation handlers
+│   │   └── subscriptions/   # Real-time events
+│   └── blockchain/
+│       ├── contracts/       # Smart contracts
+│       └── services/        # Contract interaction
+├── models/
+│   ├── analytics/          # Current event models
+│   └── ownership/          # New ownership models
+└── services/
+    ├── analytics/          # Business logic
+    ├── encryption/         # Privacy controls
+    └── blockchain/         # Chain interaction
+```
 
-5. **Constants Management**
-   - Extract magic strings to constants
-   - Define reusable validation rules
+## Technical Guidelines 📚
 
-## Conclusion
+### GraphQL Schema Design
 
-The code is well-structured and type-safe. Suggested improvements focus on maintainability and documentation rather than critical issues.
+- Use interfaces for common fields
+- Implement proper error handling
+- Add field-level permissions
+
+### Smart Contract Integration
+
+- Keep contracts minimal
+- Use proven patterns
+- Implement upgrade mechanisms
+
+### Privacy Implementation
+
+- Default to maximum privacy
+- Granular permission controls
+- Clear audit trails
+
+## Next Actions 🎯
+
+1. **Immediate**
+
+   - Setup GraphQL foundation
+   - Design ownership schema
+   - Plan encryption strategy
+
+2. **Short-term**
+
+   - Migrate existing endpoints
+   - Deploy basic contracts
+   - Implement core ownership logic
+
+3. **Long-term**
+   - Enhanced privacy controls
+   - Advanced analytics
+   - Data monetization options
+
+## Development Practices
+
+1. **Code Quality**
+
+   - Comprehensive testing
+   - Clear documentation
+   - Regular security audits
+
+2. **Privacy Focus**
+
+   - Data minimization
+   - Explicit consent
+   - User control
+
+3. **Maintainability**
+   - Clear interfaces
+   - Dependency injection
+   - Modular design

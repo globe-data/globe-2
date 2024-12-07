@@ -4,13 +4,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import uvicorn
 from app.api.router import router
+from app.db.mongodb import db
 
 settings = Settings()
 logger = setup_logger(settings.log_level)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup
+    await db.connect_to_database()
     yield
+    # Shutdown
+    await db.close_database_connection()
 
 app = FastAPI(
     title=settings.app_name,

@@ -248,7 +248,6 @@ class PerformanceData(BaseModel):
     value: float
     navigation_type: str
     effective_connection_type: str
-
 class VisibilityData(BaseModel):
     """Model representing data for a visibility state change event.
     
