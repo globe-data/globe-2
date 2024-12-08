@@ -74,6 +74,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "jose" },
     { name = "motor" },
     { name = "pydantic-settings" },
     { name = "uvicorn" },
@@ -82,6 +83,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115.6" },
+    { name = "jose", specifier = ">=1.0.0" },
     { name = "motor", specifier = ">=3.6.0" },
     { name = "pydantic-settings", specifier = ">=2.6.1" },
     { name = "uvicorn", specifier = ">=0.32.1" },
@@ -106,6 +108,15 @@ wheels = [
 ]
 
 [[package]]
+name = "jose"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pycrypto" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/01/3d/832caa69cd0d3be2d608d8290be2221072669aa88e87690837f6b31c480f/jose-1.0.0.tar.gz", hash = "sha256:8436c3617cd94e1ba97828fbb1ce27c129f66c78fb855b4bb47e122b5f345fba", size = 9153 }
+
+[[package]]
 name = "motor"
 version = "3.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -116,6 +127,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/6a/d1/06af0527fd02d49b2
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b4/c2/bba4dce0dc56e49d95c270c79c9330ed19e6b71a2a633aecf53e7e1f04c9/motor-3.6.0-py3-none-any.whl", hash = "sha256:9f07ed96f1754963d4386944e1b52d403a5350c687edc60da487d66f98dbf894", size = 74802 },
 ]
+
+[[package]]
+name = "pycrypto"
+version = "2.6.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/60/db/645aa9af249f059cc3a368b118de33889219e0362141e75d4eaf6f80f163/pycrypto-2.6.1.tar.gz", hash = "sha256:f2ce1e989b272cfcb677616763e0a2e7ec659effa67a88aa92b3a65528f60a3c", size = 446240 }
 
 [[package]]
 name = "pydantic"
