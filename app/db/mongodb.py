@@ -1,7 +1,7 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson.codec_options import CodecOptions
 from bson.binary import UuidRepresentation
-from config.settings import settings
+from app.config import settings
 
 class MongoDB:
     client: AsyncIOMotorClient = None
@@ -41,7 +41,6 @@ class MongoDB:
                 }
             )
         except Exception:
-            # Collection might already exist
             pass
             
         # Create indexes

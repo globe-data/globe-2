@@ -7,11 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 # Local imports - Use absolute imports
-from app.config import Settings, setup_logger
-from app.api.router import router
+from .config import settings, setup_logger
+from .api import router
 from app.db.mongodb import db
 
-settings = Settings()
 logger = setup_logger(settings.log_level)
 
 @asynccontextmanager

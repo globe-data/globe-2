@@ -1,10 +1,24 @@
-from fastapi import APIRouter, HTTPException, Body, Response, status, Depends, Request
-from motor.motor_asyncio import AsyncIOMotorDatabase
-from app.api.models import AnalyticsBatch, AnalyticsBatchResponse, AnalyticsEvent
-from app.api.deps import get_database
-from app.config import logger
+# Standard library imports
 from uuid import UUID
-from typing import Dict, Any
+
+# FastAPI imports
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
+
+# Third-party imports
+from motor.motor_asyncio import AsyncIOMotorDatabase
+
+# Local imports
+from app.api.models import AnalyticsBatch, AnalyticsBatchResponse, AnalyticsEvent
+from app.api import deps
+from app.config import logger
 
 analytics_router = APIRouter(
     tags=["analytics"]
@@ -14,7 +28,7 @@ analytics_router = APIRouter(
     summary="Process analytics batch", 
     description="Endpoint to process a batch of analytics data",
     response_description="Returns confirmation of batch model validation",
-    # response_model=AnalyticsBatchResponse,
+    response_model=AnalyticsBatchResponse,
     responses={
         201: {"description": "Analytics batch processed successfully"},
         400: {"description": "Invalid batch data"},
@@ -23,7 +37,7 @@ analytics_router = APIRouter(
 )
 async def process_batch(
     batch: AnalyticsBatch = Body(...),
-    db: AsyncIOMotorDatabase = Depends(get_database),
+    db: AsyncIOMotorDatabase = Depends(deps.get_database),
     response: Response = Response
 ) -> AnalyticsBatchResponse:
     try:
@@ -48,23 +62,22 @@ async def process_batch(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred processing the analytics batch"
         )
-    
-    
+
 @analytics_router.get("/events")
 async def get_events(
-    request: Request,
-    db: AsyncIOMotorDatabase = Depends(get_database)
+    globe_id: UUID | None = None,
+    event_type: str | None = None,
+    db: AsyncIOMotorDatabase = Depends(deps.get_database)
 ) -> list[AnalyticsEvent]:
-    globe_id = request.query_params.get("globe_id")
-    event_type = request.query_params.get("event_type")
-    
     try:
         # Build query filters
         query_filter = {}
         if globe_id:
-            query_filter["globe_id"] = UUID(globe_id)
+            query_filter["globe_id"] = globe_id
         if event_type:
             query_filter["event_type"] = event_type
+
+        # Rest of the code stays the same...
 
         # Execute query with combined filter and projection
         events = await db.events.find(

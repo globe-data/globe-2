@@ -1,32 +1,14 @@
-from .analytics_models import (
-    EVENT_TYPE_TO_MODEL, EVENT_MODELS, AnalyticsEvent,
-    EventTypes, VisibilityState, Event, BrowserInfo, ScreenResolution,
-    DeviceInfo, NetworkInfo, PageViewData, ClickData,
-    ScrollData, MediaData, FormData, ConversionData, ErrorData,
-    PerformanceData, VisibilityData, LocationData, TabData, StorageData,
-    ResourceData, IdleData, PageViewEvent, ClickEvent, ScrollEvent,
-    MediaEvent, FormEvent, ConversionEvent, ErrorEvent, PerformanceEvent,
-    VisibilityEvent, LocationEvent, TabEvent, StorageEvent, ResourceEvent,
-    IdleEvent, CustomEvent, AnalyticsBatch, AnalyticsBatchResponse
+from .analytics_models import *
+from .auth_models import *
+import sys
+
+# Get all names from both modules
+from . import analytics_models
+from . import auth_models
+
+__all__ = (
+    getattr(analytics_models, '__all__', []) +
+    getattr(auth_models, '__all__', [])
 )
 
-from .auth_models import (
-    UserRole, UserStatus, UserBase, UserCreate, UserUpdate, UserInDB, UserResponse,
-    EmailVerification, UserSession, Token, LoginResponse,
-    PasswordResetRequest, PasswordReset
-)
-
-__all__ = [
-    "EVENT_TYPE_TO_MODEL", "EVENT_MODELS", "AnalyticsEvent",
-    "EventTypes", "VisibilityState", "Event", "BrowserInfo", "ScreenResolution",
-    "DeviceInfo", "NetworkInfo", "PageViewData", "ClickData",
-    "ScrollData", "MediaData", "FormData", "ConversionData", "ErrorData",
-    "PerformanceData", "VisibilityData", "LocationData", "TabData", "StorageData",
-    "ResourceData", "IdleData", "PageViewEvent", "ClickEvent", "ScrollEvent",
-    "MediaEvent", "FormEvent", "ConversionEvent", "ErrorEvent", "PerformanceEvent",
-    "VisibilityEvent", "LocationEvent", "TabEvent", "StorageEvent", "ResourceEvent",
-    "IdleEvent", "CustomEvent", "AnalyticsBatch", "AnalyticsBatchResponse",
-    "UserRole", "UserStatus", "UserBase", "UserCreate", "UserUpdate", "UserInDB", "UserResponse",
-    "EmailVerification", "UserSession", "Token", "LoginResponse",
-    "PasswordResetRequest", "PasswordReset"
-]
+print("Available models:", sorted(__all__))

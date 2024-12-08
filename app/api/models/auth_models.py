@@ -106,3 +106,8 @@ class PasswordReset(BaseModel):
     """Model for password reset execution."""
     token: str
     new_password: SecretStr = Field(..., min_length=8)
+
+__all__ = [
+    name for name, obj in globals().items() 
+    if isinstance(obj, type) and issubclass(obj, BaseModel) and obj != BaseModel
+]

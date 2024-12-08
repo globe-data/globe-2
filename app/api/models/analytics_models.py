@@ -515,3 +515,8 @@ EVENT_TYPE_TO_MODEL = {
     EventTypes.RESOURCE: ResourceData,
     EventTypes.IDLE: IdleData
 }
+
+__all__ = [
+    name for name, obj in globals().items() 
+    if isinstance(obj, type) and issubclass(obj, BaseModel) and obj != BaseModel
+]

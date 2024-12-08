@@ -1,3 +1,3 @@
-from db.mongodb import db
+from .mongodb import db
 
-__all__ = ["db"] 
+__all__ = ["db"]
