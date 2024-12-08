@@ -484,8 +484,15 @@ class AnalyticsBatch(BaseModel):
                         validated_event = CustomEvent(**event)
                         validated_events.append(validated_event)
             except (ValueError, ValidationError):
+                # logger.info(f"Invalid event: {event}")
                 continue  # Skip invalid events
         return validated_events
+
+class AnalyticsEvent(BaseModel):
+    """Model representing an analytics event."""
+    event_id: UUID
+    event_type: EventTypes
+    data: Dict[str, Any]
 
 class AnalyticsBatchResponse(BaseModel):
     """Model representing a response to an analytics batch request."""

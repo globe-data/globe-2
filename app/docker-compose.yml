@@ -3,21 +3,44 @@ version: '3.8'
 services:
   mongodb:
     image: mongo:latest
-    container_name: mongodb
-    restart: always
+    container_name: globe_mongodb
+    restart: unless-stopped
     ports:
       - "27017:27017"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: example
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-root}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-example}
+      MONGODB_EXTRA_FLAGS: "--wiredTigerCacheSizeGB=1"
     volumes:
       - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
     networks:
-      - app_network
+      - globe_network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
 
 volumes:
   mongodb_data:
+    name: globe_mongodb_data
+  mongodb_config:
+    name: globe_mongodb_config
 
 networks:
-  app_network:
+  globe_network:
+    name: globe_network
     driver: bridge

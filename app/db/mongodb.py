@@ -1,9 +1,7 @@
 from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo import MongoClient
 from bson.codec_options import CodecOptions
 from bson.binary import UuidRepresentation
-from uuid import UUID
-from app.config.settings import settings
+from config.settings import settings
 
 class MongoDB:
     client: AsyncIOMotorClient = None

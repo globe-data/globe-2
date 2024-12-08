@@ -1,0 +1,14 @@
+[project]
+name = "globe-2"
+version = "0.1.0"
+description = "Globe Analytics"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.6",
+    "motor>=3.6.0",
+    "pydantic-settings>=2.6.1",
+    "uvicorn>=0.32.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

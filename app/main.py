@@ -1,8 +1,13 @@
-from app.config import Settings, setup_logger
+# Standard library imports
+from contextlib import asynccontextmanager
+
+# Third-party imports
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
 import uvicorn
+
+# Local imports - Use absolute imports
+from app.config import Settings, setup_logger
 from app.api.router import router
 from app.db.mongodb import db
 
