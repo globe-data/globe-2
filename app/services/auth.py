@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from jose import jwt
+from app.config import settings
 from passlib.context import CryptContext
-from app.core.config import settings
 from app.db.repositories.users import UserRepository
-from app.models.user import UserCreate, UserInDB
+from app.models import UserCreate, UserInDB
 
 class AuthService:
     def __init__(self, user_repository: UserRepository):
