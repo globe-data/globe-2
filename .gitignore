@@ -6,6 +6,7 @@
 venv/
 .uv/
 __pypackages__/
+env/
 
 # Python
 __pycache__/
@@ -87,3 +88,5 @@ docker-compose.override.yml
 *~
 
 generated_events.json
+env/
+app/env
