@@ -4,6 +4,8 @@ from app.api.models import AnalyticsBatch, AnalyticsBatchResponse, AnalyticsEven
 from app.api.deps import get_database
 from app.config import logger
 from uuid import UUID
+from typing import Dict, Any
+
 analytics_router = APIRouter(
     tags=["analytics"]
 )

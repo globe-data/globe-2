@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     environment: str = "development"
     secret_key: str = "test-key"
 
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ALGORITHM: str = "HS256"
+
     # Use localhost when running locally, mongodb when in Docker
     MONGO_HOST: str = "localhost"
     MONGO_PORT: int = 27017
