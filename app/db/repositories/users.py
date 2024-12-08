@@ -1,6 +1,6 @@
 from typing import Optional
 from bson import ObjectId
-from app.api.models import UserInDB
+from app.models import UserInDB
 from app.db.repositories.base import BaseRepository
 
 class UserRepository(BaseRepository[UserInDB]):

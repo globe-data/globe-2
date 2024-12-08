@@ -16,7 +16,7 @@ from fastapi import (
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 # Local imports
-from app.api.models import AnalyticsBatch, AnalyticsBatchResponse, AnalyticsEvent
+from app.models import AnalyticsBatch, AnalyticsBatchResponse, AnalyticsEvent
 from app.api import deps
 from app.config import logger
 

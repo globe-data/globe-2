@@ -10,5 +10,3 @@ __all__ = (
     getattr(analytics_models, '__all__', []) +
     getattr(auth_models, '__all__', [])
 )
-
-print("Available models:", sorted(__all__))
