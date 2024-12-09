@@ -6,17 +6,28 @@ from passlib.context import CryptContext
 from app.db.repositories.users import UserRepository
 from app.models import UserCreate, UserInDB
 
+
 class AuthService:
     def __init__(self, user_repository: UserRepository):
         self.user_repository = user_repository
         self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
     def create_access_token(self, user_id: str) -> str:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        """Creates a user access token using jwt for auth access to the Globe Data platform
+
+        Args:
+            user_id (str): UUID representing the user.
+
+        Returns:
+            str: JWT access token for authentication
+        """
+        expire = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+        )
         return jwt.encode(
             {"exp": expire, "sub": str(user_id)},
             settings.SECRET_KEY,
-            algorithm=settings.ALGORITHM
+            algorithm=settings.ALGORITHM,
         )
 
     async def authenticate_user(self, email: str, password: str) -> Optional[UserInDB]:
@@ -39,4 +50,4 @@ class AuthService:
             created_at=datetime.utcnow()
         )
         user_id = await self.user_repository.create_user(user_in_db)
-        return user_in_db 
+        return user_in_db
