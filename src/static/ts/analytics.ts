@@ -1,22 +1,95 @@
-import { z } from "zod";
 import {
-  EventSchemas,
-  VisibilityState,
-  AnalyticsEvent,
-  DeviceSchemas,
+  EventTypes,
+  AnalyticsEventUnion,
+  PageViewData,
+  ClickData,
+  ScrollData,
+  MediaData,
+  FormData,
+  ConversionData,
+  ErrorData,
+  PerformanceData,
+  VisibilityData,
+  ResourceData,
+  IdleData,
+  TabData,
+  LocationData,
+  StorageData,
+  BrowserInfo,
+  DeviceInfo,
+  NetworkInfo,
 } from "./types/events";
-import { createClient } from "@supabase/supabase-js";
-import { v4 as uuidv4 } from "uuid";
+import { openDB } from "idb";
 
-// declare const SUPABASE_URL: string;
-// declare const SUPABASE_KEY: string;
+/**
+ * Optimized Analytics class using modern browser APIs and performance best practices
+ */
 
-// Types and Interfaces
+class TransferableBuffer {
+  private buffer: SharedArrayBuffer;
+  private view: Int32Array;
+  private offset = 0;
+
+  constructor(size: number) {
+    this.buffer = new SharedArrayBuffer(size);
+    this.view = new Int32Array(this.buffer);
+  }
+
+  write(data: number): boolean {
+    if (this.offset >= this.view.length) return false;
+    this.view[this.offset++] = data;
+    return true;
+  }
+
+  read(): Int32Array {
+    return this.view.slice(0, this.offset);
+  }
+
+  clear(): void {
+    this.offset = 0;
+  }
+}
+
+class RingBuffer<T> {
+  private buffer: T[];
+  private head = 0;
+  private tail = 0;
+  private _size = 0;
+
+  constructor(private capacity: number) {
+    this.buffer = new Array(capacity);
+  }
+
+  push(item: T): void {
+    this.buffer[this.head] = item;
+    this.head = (this.head + 1) % this.capacity;
+    if (this._size < this.capacity) {
+      this._size++;
+    } else {
+      this.tail = (this.tail + 1) % this.capacity;
+    }
+  }
+
+  drain(): T[] {
+    const items: T[] = [];
+    while (this._size > 0) {
+      items.push(this.buffer[this.tail]);
+      this.tail = (this.tail + 1) % this.capacity;
+      this._size--;
+    }
+    return items;
+  }
+
+  get size(): number {
+    return this._size;
+  }
+}
+
 interface PrivacySettings {
   gdprConsent: boolean;
   ccpaCompliance: boolean;
   dataRetentionDays: number;
-  allowedDataTypes: Array<keyof typeof EventSchemas>;
+  allowedDataTypes: EventTypes[];
   ipAnonymization: boolean;
   sensitiveDataFields: string[];
   cookiePreferences: {
@@ -27,88 +100,58 @@ interface PrivacySettings {
   };
 }
 
-interface NavigatorWithUserAgentData extends Navigator {
-  userAgentData?: {
-    brands: { brand: string }[];
-  };
-}
-
-interface NetworkInformation extends EventTarget {
-  readonly effectiveType: "2g" | "3g" | "4g" | "5g";
-  readonly downlink: number;
-  readonly rtt: number;
-  readonly saveData: boolean;
-  readonly type:
-    | "bluetooth"
-    | "cellular"
-    | "ethernet"
-    | "none"
-    | "wifi"
-    | "wimax"
-    | "other"
-    | "unknown";
-}
-
-interface NavigatorWithConnection extends Navigator {
-  connection?: NetworkInformation;
-}
-
-/**
- * Analytics class implementing the Singleton pattern for tracking user interactions
- * and behavior on the website. Handles event collection, validation, and submission
- * to analytics servers.
- */
 class Analytics {
-  // Constants
-  private readonly RATE_LIMIT_MS = 1000;
-  private readonly SCROLL_DEBOUNCE_MS = 250;
-  private readonly API_URL = "http://localhost:8000/api/analytics/batch";
-  private readonly MAX_EVENTS_BUFFER = 1000;
-  private readonly MAX_EVENT_IDS = 1000;
-  private readonly BATCH_THRESHOLD = 50;
-
-  // Singleton instance
   private static instance: Analytics | null = null;
-
-  // State management
-  private events: AnalyticsEvent[] = [];
-  private privacySettings!: PrivacySettings;
-  private eventListeners: Array<{
-    type: keyof typeof EventSchemas;
-    listener: EventListener;
-  }> = [
-    {
-      type: "click",
-      listener: ((e: Event) =>
-        this.handleClick(e as MouseEvent)) as EventListener,
-    },
-    { type: "scroll", listener: this.handleScroll.bind(this) },
-    { type: "visibility", listener: this.handleVisibility.bind(this) },
-  ];
-  private rateLimitMap = new Map<keyof typeof EventSchemas, number>();
-  private usedEventIds: Set<string> = new Set();
-
-  // Session and user management
+  private readonly worker: Worker;
+  private readonly eventBuffer: TransferableBuffer;
   private readonly sessionId = crypto.randomUUID();
   private currentUserId: string | null = null;
-  private authWindowOpened = false;
 
-  // UI state
+  // Optimized storage
+  private readonly eventQueue = new RingBuffer<AnalyticsEventUnion>(1000);
+  private readonly idCache = new Int32Array(new SharedArrayBuffer(4000));
+  private readonly throttleMap = new Map<EventTypes, DOMHighResTimeStamp>();
+
+  // Additional tracking state
   private lastScrollPosition = 0;
-  private throttleTimeout: number | null = null;
-  private scrollTimeout: number | null = null;
+  private lastIdleTime = performance.now();
+  private readonly scrollThresholds = new Set<number>();
+  private mediaElements = new WeakMap<HTMLMediaElement, MediaData>();
+  private privacySettings!: PrivacySettings;
 
-  // Services
-  // private readonly supabase = createClient(SUPABASE_URL!, SUPABASE_KEY!);
+  // Performance monitoring
+  private readonly performanceMetrics = new Map<string, number>();
+  private readonly resourceTimings = new Set<string>();
 
-  // Private constructor for singleton pattern
+  private visibilityMetrics: Map<
+    Element,
+    {
+      timeFirstSeen: number;
+      totalVisibleTime: number;
+      lastSeenTime: number;
+      isVisible: boolean;
+    }
+  > = new Map();
+
+  private readonly clickMetrics: Map<
+    string,
+    {
+      lastClick: number;
+      clickCount: number;
+      interactions: Set<string>;
+    }
+  > = new Map();
+
   private constructor() {
+    this.worker = new Worker(
+      new URL("./analytics.worker.ts", import.meta.url),
+      { type: "module" }
+    );
+    this.eventBuffer = new TransferableBuffer(32 * 1024);
+    this.initializePrivacySettings();
     this.initialize();
   }
 
-  /**
-   * Gets the singleton instance of the Analytics class
-   */
   public static getInstance(): Analytics {
     if (!Analytics.instance) {
       Analytics.instance = new Analytics();
@@ -116,99 +159,12 @@ class Analytics {
     return Analytics.instance;
   }
 
-  // -------- Initialization Methods --------
-
-  /**
-   * Initializes the analytics instance with all necessary setup
-   */
-  private initialize(): void {
-    this.initializeUser();
-    this.initializePrivacySettings();
-    this.fetchBrowserData();
-    this.setupTracking();
-    this.setupEventListeners();
-    this.setupDOMListeners();
-    this.setupTestHandlers();
-    this.logPageView();
-  }
-
-  /**
-   * Initializes user authentication and tracking consent
-   */
-  private async initializeUser(): Promise<void> {
-    if (sessionStorage.getItem("tracking_declined") || this.authWindowOpened) {
-      return;
-    }
-    // Mock user data for development/testing
-    const {
-      data: { user },
-    } = {
-      data: {
-        user: {
-          id: "test-user-123",
-          email: "test@example.com",
-          created_at: new Date().toISOString(),
-          last_sign_in_at: new Date().toISOString(),
-          user_metadata: {
-            full_name: "Test User",
-            avatar_url: "https://example.com/avatar.png",
-          },
-        },
-      },
-    };
-
-    if (!user) {
-      this.authWindowOpened = true;
-      const authWindow = window.open(
-        "globe.data/login?fromExtension=true",
-        "_blank"
-      );
-
-      window.addEventListener("message", this.handleAuthResponse);
-    } else {
-      this.currentUserId = user.id;
-    }
-  }
-
-  /**
-   * Handles authentication response from popup window
-   */
-  private handleAuthResponse = (event: MessageEvent): void => {
-    if (event.data?.type === "auth_response") {
-      if (event.data.success) {
-        this.currentUserId = event.data.userId;
-      } else {
-        sessionStorage.setItem("tracking_declined", "true");
-      }
-      window.removeEventListener("message", this.handleAuthResponse);
-    }
-  };
-
-  /**
-   * Initializes privacy settings with default values
-   */
   private initializePrivacySettings(): void {
     this.privacySettings = {
       gdprConsent: true,
       ccpaCompliance: true,
       dataRetentionDays: 90,
-      allowedDataTypes: [
-        "pageview",
-        "click",
-        "scroll",
-        "media",
-        "form",
-        "conversion",
-        "error",
-        "performance",
-        "visibility",
-        "custom",
-        "resource",
-        "idle",
-        "location",
-        "tab",
-        "storage",
-      ],
+      allowedDataTypes: Object.values(EventTypes),
       ipAnonymization: false,
       sensitiveDataFields: [],
       cookiePreferences: {
@@ -220,703 +176,659 @@ class Analytics {
     };
   }
 
-  // -------- Browser Data Fetching Methods --------
+  private initialize(): void {
+    // Use Intersection Observer for visibility tracking
+    this.setupIntersectionTracking();
 
-  private fetchBrowserData(): void {
-    const browserData: z.infer<typeof DeviceSchemas.browserData> = {
-      user_agent: navigator.userAgent,
-      language: navigator.language,
-      platform: navigator.userAgent || "unknown",
-      vendor:
-        (navigator as NavigatorWithUserAgentData).userAgentData?.brands[0]
-          ?.brand || "unknown",
-      cookies_enabled: navigator.cookieEnabled,
-      time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      time_zone_offset: new Date().getTimezoneOffset(),
-    };
-
-    const networkData: z.infer<typeof DeviceSchemas.networkData> = {
-      connection_type:
-        (navigator as NavigatorWithConnection).connection?.type || "unknown",
-      effective_type:
-        (navigator as NavigatorWithConnection).connection?.effectiveType ||
-        "unknown",
-      downlink:
-        (navigator as NavigatorWithConnection).connection?.downlink || 0,
-      rtt: (navigator as NavigatorWithConnection).connection?.rtt || 0,
-      save_data:
-        (navigator as NavigatorWithConnection).connection?.saveData || false,
-      anonymize_ip: this.privacySettings.ipAnonymization,
-    };
-
-    const deviceData: z.infer<typeof DeviceSchemas.deviceData> = {
-      screen_resolution: {
-        width: window.innerWidth,
-        height: window.innerHeight,
-      },
-      color_depth: window.screen.colorDepth,
-      pixel_ratio: window.devicePixelRatio,
-
-      // TODO properly define the below
-
-      max_touch_points: navigator.maxTouchPoints || 0,
-      memory: (navigator as any).deviceMemory || 0,
-      hardware_concurrency: navigator.hardwareConcurrency || 0,
-      device_memory: (navigator as any).deviceMemory || 0,
-    };
-
-    // this.addEventToQueue("device", {
-    //   browser: browserData,
-    //   network: networkData,
-    //   device: deviceData,
-    // });
-  }
-
-  // -------- Event Processing Methods --------
-
-  /**
-   * Pushes a new event to the queue with rate limiting and validation
-   */
-  private pushEvent<T extends keyof typeof EventSchemas>(
-    type: T,
-    data: z.infer<(typeof EventSchemas)[T]>["data"]
-  ): void {
-    if (!this.shouldTrackEvent(type) || this.isRateLimited(type)) {
-      return;
-    }
-
-    const event = this.createEvent(type, data);
-    if (!this.validateEvent(type, event)) {
-      return;
-    }
-
-    this.addEventToQueue(event);
-  }
-
-  /**
-   * Creates a new event with base properties
-   */
-  private createEvent<T extends keyof typeof EventSchemas>(
-    type: T,
-    data: z.infer<(typeof EventSchemas)[T]>["data"]
-  ): AnalyticsEvent {
-    const baseEvent = {
-      ...this.createBaseEvent(type),
-      data,
-    } as const;
-
-    return type === "custom"
-      ? ({
-          ...baseEvent,
-          name: (data as any).name,
-          event_type: type,
-        } as AnalyticsEvent)
-      : ({ ...baseEvent, event_type: type } as AnalyticsEvent);
-  }
-
-  /**
-   * Creates base event properties
-   */
-  private createBaseEvent(type: keyof typeof EventSchemas) {
-    return {
-      globe_id: this.currentUserId || "03c04930-0c1b-4a2a-96cd-933dd8d7914c",
-      event_id: this.generateUniqueEventId(),
-      timestamp: new Date(),
-      client_timestamp: new Date(),
-      session_id: this.sessionId,
-      event_type: type,
-    };
-  }
-
-  /**
-   * Validates an event against its schema
-   */
-  private validateEvent<T extends keyof typeof EventSchemas>(
-    type: T,
-    event: AnalyticsEvent
-  ): boolean {
-    try {
-      EventSchemas[type].parse(event);
-      return true;
-    } catch (error) {
-      console.error(`Invalid event data for type ${type}:`, error);
-      return false;
-    }
-  }
-
-  /**
-   * Adds an event to the queue and triggers processing if threshold is reached
-   */
-  private addEventToQueue(event: AnalyticsEvent): void {
-    if (this.events.length >= this.MAX_EVENTS_BUFFER) {
-      this.events.shift();
-    }
-
-    this.events.push(event);
-
-    if (this.events.length >= this.BATCH_THRESHOLD) {
-      this.processBatch();
-    }
-  }
-
-  // -------- Batch Processing Methods --------
-
-  /**
-   * Sets up periodic batch processing
-   */
-  private setupTracking(): void {
-    setInterval(() => this.processBatch(), 5000);
-  }
-
-  /**
-   * Processes a batch of events with retry logic
-   */
-  private async processBatch(retries = 3): Promise<void> {
-    if (this.events.length === 0) return;
-
-    const eventsToProcess = [...this.events];
-    this.events = [];
-
-    for (let attempt = 0; attempt < retries; attempt++) {
-      try {
-        await this.sendToAnalyticsServer(eventsToProcess);
-        return;
-      } catch (error) {
-        console.error(
-          `Failed to process events (attempt ${attempt + 1}/${retries}):`,
-          error
-        );
-
-        if (
-          attempt === retries - 1 &&
-          this.events.length + eventsToProcess.length <= this.MAX_EVENTS_BUFFER
-        ) {
-          this.events.push(...eventsToProcess);
-        } else {
-          await new Promise((resolve) =>
-            setTimeout(resolve, Math.pow(2, attempt) * 1000)
-          );
-        }
-      }
-    }
-  }
-
-  /**
-   * Sends events to the analytics server
-   */
-  private async sendToAnalyticsServer(
-    events: AnalyticsEvent[]
-  ): Promise<Record<string, unknown>> {
-    const response = await fetch(this.API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        events,
-        user_id: this.currentUserId,
-      }),
-      credentials: "include",
+    // Event delegation for interactions
+    document.addEventListener("click", this.handleClick, {
+      passive: true,
+      capture: true,
     });
 
-    if (!response.ok) {
-      throw new Error(await this.getErrorMessage(response));
-    }
+    // Additional event listeners
+    window.addEventListener("scroll", this.handleScroll, { passive: true });
+    window.addEventListener("storage", this.handleStorage);
+    document.addEventListener("visibilitychange", this.handleVisibility);
 
-    this.cleanupOldEventIds();
-    return await response.json();
-  }
+    // Setup specialized tracking
+    this.setupMediaTracking();
+    this.setupResourceTracking();
+    this.setupTabTracking();
+    this.setupLocationTracking();
+    this.setupIdleTracking();
+    // this.setupPerformanceMonitoring();
 
-  /**
-   * Extracts error message from response
-   */
-  private async getErrorMessage(response: Response): Promise<string> {
-    try {
-      const errorData = await response.json();
-      if (errorData.detail && typeof errorData.detail === "object") {
-        return `Validation errors: ${JSON.stringify(errorData.detail.errors)}`;
-      }
-      return errorData.detail || "Failed to send events to analytics server";
-    } catch {
-      return `Failed to send events to analytics server: ${response.statusText}`;
-    }
-  }
-
-  // -------- Utility Methods --------
-
-  /**
-   * Generates a unique event ID
-   */
-  private generateUniqueEventId(): string {
-    let eventId: string;
-    do {
-      eventId = uuidv4();
-    } while (this.usedEventIds.has(eventId));
-
-    this.usedEventIds.add(eventId);
-    return eventId;
-  }
-
-  /**
-   * Cleans up old event IDs to prevent memory issues
-   */
-  private cleanupOldEventIds(): void {
-    if (this.usedEventIds.size > this.MAX_EVENT_IDS) {
-      const idsArray = Array.from(this.usedEventIds);
-      this.usedEventIds = new Set(idsArray.slice(-this.MAX_EVENT_IDS));
-    }
-  }
-
-  /**
-   * Checks if an event type should be tracked based on privacy settings
-   */
-  private shouldTrackEvent(type: keyof typeof EventSchemas): boolean {
-    return this.privacySettings.allowedDataTypes.includes(type);
-  }
-
-  /**
-   * Checks if an event type is rate limited
-   */
-  private isRateLimited(type: keyof typeof EventSchemas): boolean {
-    const lastEventTime = this.rateLimitMap.get(type);
-    const now = Date.now();
-
-    if (lastEventTime && now - lastEventTime < this.RATE_LIMIT_MS) {
-      return true;
-    }
-
-    this.rateLimitMap.set(type, now);
-    return false;
-  }
-
-  // -------- Event Listener Setup --------
-
-  /**
-   * Sets up core event listeners
-   */
-  private setupEventListeners(): void {
-    this.eventListeners = [
-      {
-        type: "click",
-        listener: (e: Event) => this.handleClick(e as MouseEvent),
-      },
-      { type: "scroll", listener: this.handleScroll.bind(this) },
-      { type: "visibility", listener: this.handleVisibility.bind(this) },
-    ];
-
-    this.eventListeners.forEach(({ type, listener }) => {
-      if (type === "visibility") {
-        document.addEventListener("visibilitychange", listener);
-      } else {
-        document.addEventListener(type, listener);
+    // Handle page unload
+    window.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        this.flushEvents();
       }
     });
   }
 
-  /**
-   * Sets up DOM-based event listeners
-   */
-  private setupDOMListeners(): void {
-    document.addEventListener("submit", this.handleFormSubmit.bind(this));
-    this.setupMediaListeners();
-    window.addEventListener("error", this.handleError.bind(this));
-    this.setupPerformanceObserver();
-  }
-
-  // -------- Event Handlers --------
-
-  private handleClick(e: MouseEvent): void {
-    const target = e.target as HTMLElement;
-    if (!target || !this.shouldTrackEvent("click")) return;
-
-    this.pushEvent("click", {
-      element_path: this.getElementPath(target),
-      element_text: target.textContent?.trim() || "",
-      target: this.getElementData(target),
-      page: this.getPageData(),
-      x_pos: e.clientX,
-      y_pos: e.clientY,
-      href: target instanceof HTMLAnchorElement ? target.href : undefined,
-    });
-  }
-
-  private handleScroll(e: Event): void {
-    if (this.scrollTimeout) {
-      window.clearTimeout(this.scrollTimeout);
-    }
-
-    this.scrollTimeout = window.setTimeout(() => {
-      if (!this.shouldTrackEvent("scroll")) return;
-
-      const currentScroll = window.scrollY;
-      const maxScroll =
-        document.documentElement.scrollHeight - window.innerHeight;
-
-      this.pushEvent("scroll", {
-        depth: this.calculateScrollDepth(),
-        direction: this.lastScrollPosition < currentScroll ? "down" : "up",
-        max_depth: maxScroll,
-        relative_depth: Math.round((currentScroll / maxScroll) * 100),
-      });
-
-      this.lastScrollPosition = currentScroll;
-    }, this.SCROLL_DEBOUNCE_MS);
-  }
-
-  private handleVisibility(e: Event): void {
-    if (!this.shouldTrackEvent("visibility")) return;
-
-    this.pushEvent("visibility", {
-      visibility_state: document.visibilityState as VisibilityState,
-    });
-  }
-
-  private handleFormSubmit(e: SubmitEvent): void {
-    const form = e.target as HTMLFormElement;
-    if (!form || !this.shouldTrackEvent("form")) return;
-
-    this.pushEvent("form", {
-      form_id: form.id || "unknown",
-      action: form.action || "submit",
-      fields: this.getFormFields(form),
-      success: true,
-    });
-  }
-
-  private handleError(e: ErrorEvent): void {
-    if (!this.shouldTrackEvent("error")) return;
-
-    this.pushEvent("error", {
-      error_type: "runtime",
-      message: e.message,
-      stack_trace: e.error?.stack || "",
-      component: e.filename || "unknown",
-    });
-  }
-
-  // -------- Helper Methods --------
-
-  private calculateScrollDepth(): number {
-    const winHeight = window.innerHeight;
-    const docHeight = document.documentElement.scrollHeight;
-    const scrollTop = window.scrollY;
-    return Math.round(((scrollTop + winHeight) / docHeight) * 100);
-  }
-
-  private getFormFields(form: HTMLFormElement): string[] {
-    return Array.from(form.elements)
-      .filter(
-        (element): element is HTMLInputElement =>
-          element instanceof HTMLInputElement &&
-          Boolean(element.name) &&
-          !element.name.toLowerCase().includes("password")
-      )
-      .map((element) => element.name);
-  }
-
-  private getElementData(element: HTMLElement): Record<string, unknown> {
-    return {
-      tagName: element.tagName?.toLowerCase(),
-      id: element.id || undefined,
-      className: element.className || undefined,
-      textContent: element.textContent?.trim() || undefined,
-      href: element instanceof HTMLAnchorElement ? element.href : undefined,
-      type: element instanceof HTMLInputElement ? element.type : undefined,
-      name: "name" in element ? (element as any).name : undefined,
-      value: "value" in element ? (element as any).value : undefined,
-      attributes: this.getCustomAttributes(element),
-      path: this.getElementPath(element),
-      position: this.getElementPosition(element),
-    };
-  }
-
-  private getCustomAttributes(element: HTMLElement): Record<string, string> {
-    return Array.from(element.attributes)
-      .filter((attr) => attr.name.startsWith("data-"))
-      .reduce((acc, attr) => ({ ...acc, [attr.name]: attr.value }), {});
-  }
-
-  private getElementPath(element: HTMLElement): string {
-    const path: string[] = [];
-    let currentElement: HTMLElement | null = element;
-
-    while (currentElement && currentElement !== document.documentElement) {
-      let selector = currentElement.tagName.toLowerCase();
-      if (currentElement.id) {
-        selector += `#${currentElement.id}`;
-      } else if (currentElement.className) {
-        selector += `.${currentElement.className.split(" ").join(".")}`;
-      }
-      path.unshift(selector);
-      currentElement = currentElement.parentElement;
-    }
-
-    return path.join(" > ");
-  }
-
-  private getElementPosition(element: HTMLElement): Record<string, number> {
-    const rect = element.getBoundingClientRect();
-    return {
-      top: rect.top,
-      left: rect.left,
-      bottom: rect.bottom,
-      right: rect.right,
-      width: rect.width,
-      height: rect.height,
-    };
-  }
-
-  private getPageData(): Record<string, unknown> {
-    return {
-      url: window.location.href,
-      path: window.location.pathname,
-      title: document.title,
-      referrer: document.referrer,
-      viewport: {
-        width: window.innerWidth,
-        height: window.innerHeight,
-      },
-      devicePixelRatio: window.devicePixelRatio,
-      language: navigator.language,
-      timestamp: new Date(),
-    };
-  }
-
-  // -------- Public Methods --------
-
-  /**
-   * Logs a page view event
-   */
-  public logPageView(): void {
-    if (this.shouldTrackEvent("pageview")) {
-      this.pushEvent("pageview", {
-        url: window.location.href,
-        referrer: document.referrer || undefined,
-        title: document.title,
-        path: window.location.pathname,
-        viewport: {
-          width: window.innerWidth,
-          height: window.innerHeight,
-        },
-        load_time: performance.now(),
-      });
-    }
-  }
-
-  /**
-   * Logs a media event
-   */
-  public logMediaEvent(
-    data: z.infer<(typeof EventSchemas)["media"]>["data"]
-  ): void {
-    if (this.shouldTrackEvent("media")) {
-      this.pushEvent("media", data);
-    }
-  }
-
-  /**
-   * Logs a form event
-   */
-  public logFormEvent(
-    data: z.infer<(typeof EventSchemas)["form"]>["data"]
-  ): void {
-    if (this.shouldTrackEvent("form")) {
-      this.pushEvent("form", data);
-    }
-  }
-
-  /**
-   * Logs a conversion event
-   */
-  public logConversionEvent(
-    data: z.infer<(typeof EventSchemas)["conversion"]>["data"]
-  ): void {
-    if (this.shouldTrackEvent("conversion")) {
-      this.pushEvent("conversion", data);
-    }
-  }
-
-  /**
-   * Logs an error event
-   */
-  public logErrorEvent(
-    data: z.infer<(typeof EventSchemas)["error"]>["data"]
-  ): void {
-    if (this.shouldTrackEvent("error")) {
-      this.pushEvent("error", data);
-    }
-  }
-
-  /**
-   * Logs a performance event
-   */
-  public logPerformanceEvent(
-    data: z.infer<(typeof EventSchemas)["performance"]>["data"]
-  ): void {
-    if (this.shouldTrackEvent("performance")) {
-      this.pushEvent("performance", data);
-    }
-  }
-
-  /**
-   * Cleans up resources and removes event listeners
-   */
-  public cleanup(): void {
-    if (this.throttleTimeout) {
-      window.clearTimeout(this.throttleTimeout);
-      this.throttleTimeout = null;
-    }
-    if (this.scrollTimeout) {
-      window.clearTimeout(this.scrollTimeout);
-      this.scrollTimeout = null;
-    }
-
-    this.eventListeners.forEach(({ type, listener }) => {
-      if (type === "visibility") {
-        document.removeEventListener("visibilitychange", listener);
-      } else {
-        document.removeEventListener(type, listener);
-      }
-    });
-
-    this.events = [];
-    this.rateLimitMap.clear();
-    this.usedEventIds.clear();
-    Analytics.instance = null;
-  }
-
-  // -------- Test Handlers --------
-
-  private setupTestHandlers(): void {
-    const errorButton = document.getElementById("errorButton");
-    if (errorButton) {
-      errorButton.addEventListener("click", this.handleTestError.bind(this));
-    }
-
-    const purchaseButton = document.getElementById("purchaseButton");
-    if (purchaseButton) {
-      purchaseButton.addEventListener(
-        "click",
-        this.handleTestPurchase.bind(this)
-      );
-    }
-
-    const loadHeavyButton = document.getElementById("loadHeavyContent");
-    if (loadHeavyButton) {
-      loadHeavyButton.addEventListener(
-        "click",
-        this.handleTestPerformance.bind(this)
-      );
-    }
-  }
-
-  private handleTestError(): void {
-    try {
-      throw new Error("Test error from error button");
-    } catch (error) {
-      this.logErrorEvent({
-        error_type: "test",
-        message: error instanceof Error ? error.message : "Unknown error",
-        stack_trace: error instanceof Error ? error.stack || "" : "",
-        component: "ErrorButton",
-      });
-    }
-  }
-
-  private handleTestPurchase(): void {
-    this.logConversionEvent({
-      conversion_type: "purchase",
-      value: 99.99,
-      currency: "USD",
-      products: ["test_product"],
-    });
-  }
-
-  private async handleTestPerformance(): Promise<void> {
-    const startTime = performance.now();
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    this.logPerformanceEvent({
-      metric_name: "heavy_content_load",
-      value: performance.now() - startTime,
-      navigation_type: "heavy_content",
-      effective_connection_type:
-        (navigator as any).connection?.effectiveType || "unknown",
-    });
-  }
-
-  private setupMediaListeners(): void {
+  private setupMediaTracking(): void {
     const mediaEvents = [
       "play",
       "pause",
       "ended",
       "timeupdate",
       "volumechange",
-      "seeking",
     ];
 
-    mediaEvents.forEach((eventType) => {
-      document.addEventListener(
-        eventType as keyof DocumentEventMap,
-        (e: Event) => {
-          const media = e.target as HTMLMediaElement;
-          if (!media || !this.shouldTrackEvent("media")) return;
+    const handleMediaEvent = (event: Event): void => {
+      const media = event.target as HTMLMediaElement;
+      if (!media || !this.shouldTrackEvent(EventTypes.MEDIA)) return;
 
-          this.pushEvent("media", {
-            media_type: media instanceof HTMLVideoElement ? "video" : "audio",
-            action: eventType,
-            media_url: media.currentSrc,
-            playback_time: media.currentTime,
-            duration: media.duration,
-            title: media.title || undefined,
-          });
-        }
-      );
+      const mediaData: MediaData = {
+        media_type: media instanceof HTMLVideoElement ? "video" : "audio",
+        action: event.type,
+        media_url: media.currentSrc,
+        playback_time: media.currentTime,
+        duration: media.duration,
+        title: media.title || null,
+      };
+
+      this.queueEvent(EventTypes.MEDIA, mediaData);
+    };
+
+    mediaEvents.forEach((event) => {
+      document.addEventListener(event, handleMediaEvent, { passive: true });
     });
   }
 
-  private setupPerformanceObserver(): void {
-    if (!("PerformanceObserver" in window)) return;
+  private setupIntersectionTracking(): void {
+    // Create a single observer for all elements we want to track
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!this.shouldTrackEvent(EventTypes.VISIBILITY)) return;
 
-    const observer = new PerformanceObserver((list) => {
-      list.getEntries().forEach((entry) => {
-        if (!this.shouldTrackEvent("performance")) return;
+          const element = entry.target;
+          const now = performance.now();
+          const metrics = this.getOrCreateMetrics(element);
 
-        this.pushEvent("performance", {
-          metric_name: entry.entryType,
-          value: entry.duration || entry.startTime,
-          navigation_type:
-            performance.navigation?.type?.toString() || "unknown",
-          effective_connection_type:
-            (navigator as any).connection?.effectiveType || "unknown",
+          if (entry.isIntersecting) {
+            // Element became visible
+            metrics.isVisible = true;
+            metrics.lastSeenTime = now;
+
+            if (!metrics.timeFirstSeen) {
+              metrics.timeFirstSeen = now;
+            }
+          } else {
+            // Element became hidden
+            metrics.isVisible = false;
+            if (metrics.lastSeenTime) {
+              metrics.totalVisibleTime += now - metrics.lastSeenTime;
+            }
+          }
+
+          const visibilityData: VisibilityData = {
+            visibility_state: entry.isIntersecting ? "visible" : "hidden",
+            element_id: element.id || undefined,
+            element_type: element.tagName.toLowerCase(),
+            visibility_ratio: entry.intersectionRatio,
+            time_visible: metrics.totalVisibleTime,
+            viewport_area:
+              entry.intersectionRect.width * entry.intersectionRect.height,
+            intersection_rect: {
+              top: entry.intersectionRect.top,
+              left: entry.intersectionRect.left,
+              bottom: entry.intersectionRect.bottom,
+              right: entry.intersectionRect.right,
+            },
+          };
+
+          this.queueEvent(EventTypes.VISIBILITY, visibilityData);
+        });
+      },
+      {
+        threshold: [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0],
+        rootMargin: "50px",
+      }
+    );
+
+    // Track important elements
+    this.observeImportantElements(observer);
+
+    // Setup mutation observer to track new elements
+    this.setupDynamicElementTracking(observer);
+
+    // Cleanup function for when analytics is destroyed
+    observer.disconnect();
+    this.visibilityMetrics.clear();
+  }
+
+  private getOrCreateMetrics(element: Element) {
+    if (!this.visibilityMetrics.has(element)) {
+      this.visibilityMetrics.set(element, {
+        timeFirstSeen: 0,
+        totalVisibleTime: 0,
+        lastSeenTime: 0,
+        isVisible: false,
+      });
+    }
+    return this.visibilityMetrics.get(element)!;
+  }
+
+  private observeImportantElements(observer: IntersectionObserver): void {
+    const selectors = [
+      // Interactive elements
+      "button",
+      "a",
+      "form",
+      "input",
+      "select",
+      "textarea",
+      // Content elements
+      "article",
+      "section",
+      "main",
+      "header",
+      "footer",
+      // Custom trackable elements
+      "[data-track-visibility]",
+      "[data-analytics-id]",
+      // Important content
+      "h1",
+      "h2",
+      "img",
+      "video",
+      // Interactive components
+      '[role="button"]',
+      '[role="tab"]',
+      '[role="dialog"]',
+      // Custom components
+      ".component",
+      ".widget",
+      ".modal",
+    ].join(",");
+
+    document.querySelectorAll(selectors).forEach((element) => {
+      if (this.shouldTrackElement(element)) {
+        observer.observe(element);
+      }
+    });
+  }
+
+  private setupDynamicElementTracking(observer: IntersectionObserver): void {
+    const mutationObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node instanceof Element && this.shouldTrackElement(node)) {
+            observer.observe(node);
+          }
+        });
+
+        mutation.removedNodes.forEach((node) => {
+          if (node instanceof Element) {
+            this.visibilityMetrics.delete(node);
+          }
         });
       });
     });
 
-    try {
-      observer.observe({
-        entryTypes: [
-          "navigation",
-          "resource",
-          "paint",
-          "largest-contentful-paint",
-          "first-input",
-          "layout-shift",
-        ],
-      });
-    } catch (e) {
-      console.warn("Some performance metrics not supported");
+    mutationObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+  }
+
+  private shouldTrackElement(element: Element): boolean {
+    // Skip elements that are too small
+    const rect = element.getBoundingClientRect();
+    if (rect.width < 10 || rect.height < 10) return false;
+
+    // Track elements that:
+    if (element.hasAttribute("data-track-visibility")) return true;
+    if (element.hasAttribute("data-analytics-id")) return true;
+    if (element.matches("button, a, form, input, select, textarea"))
+      return true;
+    if (element.matches("article, section, main, header, footer")) return true;
+    if (element.matches("h1, h2, img, video")) return true;
+    if (element.getAttribute("role") === "button") return true;
+    if (element.classList.contains("component")) return true;
+    if (element.classList.contains("widget")) return true;
+    if (element.classList.contains("modal")) return true;
+
+    return false;
+  }
+
+  private handleVisibility = (): void => {
+    if (!this.shouldTrackEvent(EventTypes.VISIBILITY)) return;
+
+    this.queueEvent(EventTypes.VISIBILITY, { state: document.visibilityState });
+  };
+
+  private setupResourceTracking(): void {
+    if (!("PerformanceObserver" in window)) return;
+
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        if (this.resourceTimings.has(entry.name)) continue;
+
+        const resourceData: ResourceData = {
+          resource_type: entry.entryType,
+          url: entry.name,
+          duration: entry.duration,
+          transfer_size:
+            "transferSize" in entry
+              ? (entry as PerformanceResourceTiming).transferSize
+              : 0,
+          compression_ratio: null,
+          cache_hit: false,
+          priority: "auto",
+        };
+
+        this.queueEvent(EventTypes.RESOURCE, resourceData);
+        this.resourceTimings.add(entry.name);
+      }
+    });
+
+    observer.observe({ entryTypes: ["resource"] });
+  }
+
+  private setupTabTracking(): void {
+    window.addEventListener("focus", () => this.handleTabEvent("focus"));
+    window.addEventListener("blur", () => this.handleTabEvent("blur"));
+    window.addEventListener("beforeunload", () =>
+      this.handleTabEvent("unload")
+    );
+  }
+
+  private handleTabEvent(action: string): void {
+    if (!this.shouldTrackEvent(EventTypes.TAB)) return;
+
+    const tabData: TabData = {
+      tab_id: crypto.randomUUID(),
+      tab_title: document.title,
+      tab_url: window.location.href,
+    };
+
+    this.queueEvent(EventTypes.TAB, tabData);
+  }
+
+  private setupLocationTracking(): void {
+    const handleLocationChange = (): void => {
+      if (!this.shouldTrackEvent(EventTypes.LOCATION)) return;
+
+      const locationData: LocationData = {
+        latitude: 0,
+        longitude: 0,
+        accuracy: 0,
+        country: "",
+        region: "",
+        city: "",
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      };
+
+      this.queueEvent(EventTypes.LOCATION, locationData);
+    };
+
+    window.addEventListener("popstate", handleLocationChange);
+
+    const originalPushState = history.pushState;
+    const originalReplaceState = history.replaceState;
+
+    history.pushState = function (...args) {
+      originalPushState.apply(this, args);
+      handleLocationChange();
+    };
+
+    history.replaceState = function (...args) {
+      originalReplaceState.apply(this, args);
+      handleLocationChange();
+    };
+  }
+
+  private setupIdleTracking(): void {
+    const idleEvents = [
+      "mousedown",
+      "mousemove",
+      "keydown",
+      "scroll",
+      "touchstart",
+    ];
+
+    const handleUserActivity = (): void => {
+      if (!this.shouldTrackEvent(EventTypes.IDLE)) return;
+
+      const currentTime = performance.now();
+      const idleTime = currentTime - this.lastIdleTime;
+
+      if (idleTime > 30000) {
+        const idleData: IdleData = {
+          idle_time: idleTime,
+          last_interaction: new Date().toISOString(),
+          is_idle: true,
+        };
+
+        this.queueEvent(EventTypes.IDLE, idleData);
+      }
+
+      this.lastIdleTime = currentTime;
+    };
+
+    idleEvents.forEach((event) => {
+      window.addEventListener(event, handleUserActivity, { passive: true });
+    });
+  }
+
+  private handleStorage = (event: StorageEvent): void => {
+    if (!this.shouldTrackEvent(EventTypes.STORAGE)) return;
+
+    const storageData: StorageData = {
+      storage_type: event.storageArea === localStorage ? "local" : "session",
+      key: event.key || "",
+      value: event.newValue || "",
+    };
+
+    this.queueEvent(EventTypes.STORAGE, storageData);
+  };
+
+  private handleScroll = (): void => {
+    // Only track scroll events for document level metrics
+    if (!this.shouldTrackEvent(EventTypes.SCROLL)) return;
+
+    const scrollData: ScrollData = {
+      depth: window.scrollY,
+      direction: window.scrollY > this.lastScrollPosition ? "down" : "up",
+      max_depth: document.documentElement.scrollHeight - window.innerHeight,
+      relative_depth: Math.round(
+        (window.scrollY /
+          (document.documentElement.scrollHeight - window.innerHeight)) *
+          100
+      ),
+    };
+
+    this.queueEvent(EventTypes.SCROLL, scrollData);
+    this.lastScrollPosition = window.scrollY;
+  };
+
+  public logConversion(data: Partial<ConversionData>): void {
+    if (!this.shouldTrackEvent(EventTypes.CONVERSION)) return;
+
+    this.queueEvent(EventTypes.CONVERSION, {
+      ...data,
+      timestamp: new Date().toISOString(),
+    } as ConversionData);
+  }
+
+  public logError(error: Error): void {
+    if (!this.shouldTrackEvent(EventTypes.ERROR)) return;
+
+    const errorData: ErrorData = {
+      error_type: error.name,
+      message: error.message,
+      stack_trace: error.stack || null,
+      component: "unknown",
+    };
+
+    this.queueEvent(EventTypes.ERROR, errorData);
+  }
+
+  private shouldTrackEvent(type: EventTypes): boolean {
+    return (
+      this.privacySettings.allowedDataTypes.includes(type) &&
+      this.privacySettings.cookiePreferences.analytics
+    );
+  }
+
+  private queueEvent(type: EventTypes, data: unknown): void {
+    const event = {
+      id: crypto.randomUUID(),
+      type,
+      data,
+      timestamp: performance.now(),
+    };
+
+    this.eventQueue.push(event as any);
+
+    if (this.eventQueue.size >= 50) {
+      requestAnimationFrame(() => this.flushEvents());
     }
+  }
+
+  private async flushEvents(): Promise<void> {
+    const events = this.eventQueue.drain();
+    if (!events.length) return;
+
+    const compressed = await this.compressEvents(events);
+
+    if (document.visibilityState === "hidden") {
+      navigator.sendBeacon("/analytics", compressed);
+      return;
+    }
+
+    try {
+      await fetch("/analytics", {
+        method: "POST",
+        body: compressed,
+        keepalive: true,
+        headers: {
+          "Content-Type": "application/octet-stream",
+        },
+      });
+    } catch {
+      await this.storeForRetry(events);
+    }
+  }
+
+  private async compressEvents(
+    events: AnalyticsEventUnion[]
+  ): Promise<Uint8Array> {
+    const stream = new CompressionStream("gzip");
+    const writer = stream.writable.getWriter();
+    const encoder = new TextEncoder();
+
+    await writer.write(encoder.encode(JSON.stringify(events)));
+    await writer.close();
+
+    return new Response(stream.readable)
+      .arrayBuffer()
+      .then((buffer) => new Uint8Array(buffer));
+  }
+
+  private async storeForRetry(events: AnalyticsEventUnion[]): Promise<void> {
+    const db = await openDB("analytics", 1, {
+      upgrade(db) {
+        db.createObjectStore("failed_events", { keyPath: "timestamp" });
+      },
+    });
+
+    const tx = db.transaction("failed_events", "readwrite");
+    const store = tx.objectStore("failed_events");
+
+    await Promise.all(
+      events.map((event) => store.add({ ...event, timestamp: Date.now() }))
+    );
+  }
+
+  private setupClickTracking(): void {
+    // Use event delegation for all click tracking
+    document.addEventListener("click", this.handleClick, {
+      passive: true,
+      capture: true, // Capture phase to ensure we get all clicks
+    });
+
+    // Track programmatic clicks
+    const originalClick = HTMLElement.prototype.click;
+    HTMLElement.prototype.click = function (this: HTMLElement) {
+      originalClick.call(this);
+      const event = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+      });
+      this.dispatchEvent(event);
+    };
+  }
+
+  private handleClick = (event: MouseEvent): void => {
+    if (!this.shouldTrackEvent(EventTypes.CLICK)) return;
+
+    const target = event.target as Element;
+    if (!target || !this.shouldTrackElement(target)) return;
+
+    // Get element path efficiently
+    const path = this.getElementPath(target);
+    const elementId = target.id || path;
+
+    // Update metrics
+    const metrics = this.getOrCreateClickMetrics(elementId);
+    const now = performance.now();
+
+    // Rate limiting for rapid clicks
+    if (now - metrics.lastClick < 100) return; // Ignore clicks within 100ms
+
+    metrics.lastClick = now;
+    metrics.clickCount++;
+    metrics.interactions.add(this.getInteractionType(target));
+
+    const clickData: ClickData = {
+      element_path: path,
+      element_text: this.getElementText(target),
+      target: this.getElementProperties(target),
+      page: {
+        url: window.location.href,
+        title: document.title,
+        viewport: {
+          width: window.innerWidth,
+          height: window.innerHeight,
+        },
+      },
+      x_pos: event.pageX,
+      y_pos: event.pageY,
+      href: target instanceof HTMLAnchorElement ? target.href : null,
+      interaction_count: metrics.clickCount,
+      interaction_types: Array.from(metrics.interactions),
+      is_programmatic: event.isTrusted === false,
+      element_metadata: {
+        accessibility: {
+          role: target.getAttribute("role"),
+          label: target.getAttribute("aria-label"),
+          description: target.getAttribute("aria-description"),
+        },
+        interactivity: {
+          is_focusable: (target as HTMLElement).tabIndex >= 0,
+          is_disabled: target.hasAttribute("disabled"),
+          tab_index: target.getAttribute("tabindex"),
+        },
+      },
+    };
+
+    this.queueEvent(EventTypes.CLICK, clickData);
+  };
+
+  private getElementPath(element: Element): string {
+    const path: string[] = [];
+    let current: Element | null = element;
+
+    while (current && current !== document.body) {
+      let selector = current.tagName.toLowerCase();
+
+      if (current.id) {
+        selector += `#${current.id}`;
+        path.unshift(selector);
+        break; // ID is unique, no need to go further
+      } else {
+        const classes = Array.from(current.classList)
+          .filter((c) => !c.startsWith("js-")) // Filter out dynamic classes
+          .join(".");
+        if (classes) selector += `.${classes}`;
+
+        const siblings = Array.from(
+          current.parentElement?.children || []
+        ).filter((el) => el.tagName === current?.tagName);
+        if (siblings.length > 1) {
+          const index = siblings.indexOf(current) + 1;
+          selector += `:nth-child(${index})`;
+        }
+      }
+
+      path.unshift(selector);
+      current = current.parentElement;
+    }
+
+    return path.join(" > ");
+  }
+
+  private getElementText(element: Element): string {
+    // Get visible text content only
+    return element.textContent?.trim().slice(0, 100) || "";
+  }
+
+  private getElementProperties(element: Element): {
+    tag: string;
+    classes: string[];
+    attributes: Record<string, string>;
+    dimensions: DOMRect;
+    visible: boolean;
+  } {
+    return {
+      tag: element.tagName.toLowerCase(),
+      classes: Array.from(element.classList),
+      attributes: this.getElementAttributes(element),
+      dimensions: element.getBoundingClientRect(),
+      visible: this.isElementVisible(element),
+    };
+  }
+
+  private getElementAttributes(element: Element): Record<string, string> {
+    const attrs: Record<string, string> = {};
+    for (const attr of element.attributes) {
+      if (!attr.name.startsWith("data-internal-")) {
+        attrs[attr.name] = attr.value;
+      }
+    }
+    return attrs;
+  }
+
+  private getElementMetadata(element: Element): Record<string, unknown> {
+    return {
+      accessibility: {
+        role: element.getAttribute("role"),
+        label: element.getAttribute("aria-label"),
+        description: element.getAttribute("aria-description"),
+      },
+      interactivity: {
+        is_focusable: element.matches(":focusable"),
+        is_disabled: element.matches(":disabled"),
+        tab_index: element.getAttribute("tabindex"),
+      },
+    };
+  }
+
+  private getOrCreateClickMetrics(elementId: string) {
+    if (!this.clickMetrics.has(elementId)) {
+      this.clickMetrics.set(elementId, {
+        lastClick: 0,
+        clickCount: 0,
+        interactions: new Set(),
+      });
+    }
+    return this.clickMetrics.get(elementId)!;
+  }
+
+  private getInteractionType(element: Element): string {
+    if (element.matches('button, [role="button"]')) return "button";
+    if (element.matches("a")) return "link";
+    if (element.matches("input, select, textarea")) return "form-control";
+    if (element.matches("[data-analytics-type]")) {
+      return element.getAttribute("data-analytics-type") || "custom";
+    }
+    return "other";
+  }
+
+  private isElementVisible(element: Element): boolean {
+    const rect = element.getBoundingClientRect();
+    return (
+      rect.width > 0 &&
+      rect.height > 0 &&
+      window.getComputedStyle(element).visibility !== "hidden"
+    );
   }
 }
 
-// Initialize analytics
-const analytics = Analytics.getInstance();
-
-// Log initial pageview when the script loads
-window.addEventListener("load", () => {
-  analytics.logPageView();
-});
-
-export default analytics;
+export default Analytics.getInstance();

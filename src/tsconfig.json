@@ -8,8 +8,9 @@
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true,
         "outDir": "static/js",
-        "lib": ["ES2020", "DOM", "DOM.Iterable"]
-    },
-    "include": ["static/ts/**/*"],
-    "exclude": ["src/node_modules"]
+        "lib": ["ES2020", "DOM", "DOM.Iterable"],
+        "types": ["node"]
+  },
+  "include": ["static/ts/**/*"],
+  "exclude": ["src/node_modules"]
 }
