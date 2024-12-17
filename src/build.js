@@ -9,19 +9,26 @@ const buildOptions = {
   sourcemap: isDev,
   minify: !isDev,
   target: ["es2018"],
-  outfile: path.join(__dirname, "dist", "analytics.js"),
+  outfile: path.join(__dirname, "static", "dist", "analytics.js"),
   format: "esm",
-  define: {
-    SUPABASE_URL: JSON.stringify(process.env.SUPABASE_URL),
-    SUPABASE_KEY: JSON.stringify(process.env.SUPABASE_KEY),
-  },
 };
 
 if (isDev) {
-  // Development with watch mode
+  // Development with watch mode and serve
   esbuild.context(buildOptions).then((context) => {
+    // Start the build
     context.watch();
-    console.log("Watching for changes...");
+
+    // Start the dev server
+    context
+      .serve({
+        servedir: path.join(__dirname, "static"),
+        port: 3000,
+        host: "localhost",
+      })
+      .then((server) => {
+        console.log(`Serving at http://${server.host}:${server.port}`);
+      });
   });
 } else {
   // Production build

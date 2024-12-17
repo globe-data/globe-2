@@ -1,10 +1,8 @@
 from fastapi import APIRouter
-from app.api import analytics_router
+from app.api.routes.analytics import analytics_router
 
-router = APIRouter()
+# Create and export a single router instance
+api_router = APIRouter()
 
 # Include the analytics router
-router.include_router(analytics_router, prefix="/api/analytics")
-
-# Export the router
-__all__ = ["router"]
+api_router.include_router(analytics_router, prefix="/analytics")

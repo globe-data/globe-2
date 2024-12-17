@@ -8,8 +8,8 @@ import {
 import { createClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from "uuid";
 
-declare const SUPABASE_URL: string;
-declare const SUPABASE_KEY: string;
+// declare const SUPABASE_URL: string;
+// declare const SUPABASE_KEY: string;
 
 // Types and Interfaces
 interface PrivacySettings {
@@ -99,7 +99,7 @@ class Analytics {
   private scrollTimeout: number | null = null;
 
   // Services
-  private readonly supabase = createClient(SUPABASE_URL!, SUPABASE_KEY!);
+  // private readonly supabase = createClient(SUPABASE_URL!, SUPABASE_KEY!);
 
   // Private constructor for singleton pattern
   private constructor() {
