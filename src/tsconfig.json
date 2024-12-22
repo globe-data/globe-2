@@ -9,7 +9,11 @@
         "forceConsistentCasingInFileNames": true,
         "outDir": "static/js",
         "lib": ["ES2020", "DOM", "DOM.Iterable"],
-        "types": ["node"]
+        "types": ["node"],
+        "baseUrl": ".",
+        "paths": {
+            "@src/*": ["src/*"]
+        }
   },
   "include": ["static/ts/**/*"],
   "exclude": ["src/node_modules"]

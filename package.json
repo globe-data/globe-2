@@ -1,10 +1,11 @@
 {
-  "name": "globe-2",
+  "name": "globe-tracking",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
     "build": "NODE_ENV=production node build.js",
-    "dev": "NODE_ENV=development node build.js",
+    "build-dev": "NODE_ENV=development node build.js",
+    "dev": "NODE_ENV=development node dev-server.js",
     "test": "jest",
     "build:chrome": "webpack --env browser=chrome",
     "build:firefox": "webpack --env browser=firefox",
@@ -14,10 +15,10 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "Globe tracking and analytics system",
   "devDependencies": {
     "@types/lodash": "^4.17.13",
-    "@types/node": "^22.9.0",
+    "@types/node": "^22.10.2",
     "concurrently": "^8.0.1",
     "dotenv": "^16.4.5",
     "esbuild": "^0.24.0",
@@ -25,12 +26,11 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.46.1",
+    "@supabase/supabase-js": "^2.47.8",
     "@types/pako": "^2.0.3",
     "axios": "^1.7.9",
     "idb": "^8.0.1",
     "pako": "^2.1.0",
-    "uuid": "^11.0.3",
-    "zod": "^3.23.8"
+    "uuid": "^11.0.3"
   }
 }

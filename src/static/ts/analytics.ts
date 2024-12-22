@@ -1,14 +1,11 @@
 import {
   EventTypes,
   AnalyticsEventUnion,
-  PageViewData,
   ClickData,
   ScrollData,
   MediaData,
-  FormData,
   ConversionData,
   ErrorData,
-  PerformanceData,
   VisibilityData,
   ResourceData,
   IdleData,
@@ -18,20 +15,29 @@ import {
   BrowserInfo,
   DeviceInfo,
   NetworkInfo,
+  QueuedEvent,
+  VisibilityState,
+  AnalyticsBatch,
 } from "./types/events";
 import { openDB } from "idb";
+
+const API_URL = "http://localhost:8000/api/analytics";
 
 /**
  * Optimized Analytics class using modern browser APIs and performance best practices
  */
 
 class TransferableBuffer {
-  private buffer: SharedArrayBuffer;
+  private buffer: SharedArrayBuffer | ArrayBuffer;
   private view: Int32Array;
   private offset = 0;
 
   constructor(size: number) {
-    this.buffer = new SharedArrayBuffer(size);
+    const BufferConstructor =
+      typeof SharedArrayBuffer !== "undefined"
+        ? SharedArrayBuffer
+        : ArrayBuffer;
+    this.buffer = new BufferConstructor(size);
     this.view = new Int32Array(this.buffer);
   }
 
@@ -102,14 +108,13 @@ interface PrivacySettings {
 
 class Analytics {
   private static instance: Analytics | null = null;
-  private readonly worker: Worker;
-  private readonly eventBuffer: TransferableBuffer;
+  private readonly worker: Worker | null = null;
   private readonly sessionId = crypto.randomUUID();
   private currentUserId: string | null = null;
 
   // Optimized storage
-  private readonly eventQueue = new RingBuffer<AnalyticsEventUnion>(1000);
-  private readonly idCache = new Int32Array(new SharedArrayBuffer(4000));
+  private readonly eventQueue = new RingBuffer<QueuedEvent>(1000);
+  private readonly idCache: Int32Array;
   private readonly throttleMap = new Map<EventTypes, DOMHighResTimeStamp>();
 
   // Additional tracking state
@@ -143,13 +148,48 @@ class Analytics {
   > = new Map();
 
   private constructor() {
-    this.worker = new Worker(
-      new URL("./analytics.worker.ts", import.meta.url),
-      { type: "module" }
-    );
-    this.eventBuffer = new TransferableBuffer(32 * 1024);
-    this.initializePrivacySettings();
-    this.initialize();
+    try {
+      // Initialize worker with proper path relative to HTML file
+      // const workerPath = new URL("/analytics.worker.js", import.meta.url).href;
+      const workerPath = "./analytics.worker.js";
+      this.worker = new Worker(workerPath, { type: "module" });
+
+      // Initialize required properties
+      this.initializePrivacySettings();
+      this.initialize();
+
+      // Ensure worker is ready
+      this.worker.onmessage = this.handleWorkerMessage;
+      this.worker.onerror = this.handleWorkerError;
+
+      // Start processing events
+      setInterval(() => {
+        const events = this.eventQueue.drain();
+        if (!events.length || !this.worker) return;
+
+        const analyticsEvents = this.transformQueuedEvents(events);
+
+        this.worker.postMessage({
+          type: "PROCESS_BATCH",
+          events: analyticsEvents,
+          sessionId: this.sessionId,
+          device: this.getDeviceInfo(),
+          browser: this.getBrowserInfo(),
+          network: this.getNetworkInfo(),
+          timestamp: Date.now(),
+        } as AnalyticsBatch);
+      }, 5000);
+    } catch (error) {
+      console.error("Failed to initialize analytics:", error);
+    }
+
+    // Fallback to regular ArrayBuffer if SharedArrayBuffer isn't available
+    const bufferConstructor =
+      typeof SharedArrayBuffer !== "undefined"
+        ? SharedArrayBuffer
+        : ArrayBuffer;
+
+    this.idCache = new Int32Array(new bufferConstructor(4000));
   }
 
   public static getInstance(): Analytics {
@@ -192,12 +232,21 @@ class Analytics {
     document.addEventListener("visibilitychange", this.handleVisibility);
 
     // Setup specialized tracking
-    this.setupMediaTracking();
-    this.setupResourceTracking();
-    this.setupTabTracking();
-    this.setupLocationTracking();
-    this.setupIdleTracking();
-    // this.setupPerformanceMonitoring();
+    try {
+      this.setupMediaTracking();
+      this.setupResourceTracking();
+      this.setupTabTracking();
+      this.setupLocationTracking();
+      this.setupIdleTracking();
+      this.setupFormTracking();
+      this.setupErrorTracking();
+      this.setupConversionTracking();
+      this.setupPerformanceTracking();
+      this.setupMediaTracking();
+      this.setupScrollTracking();
+    } catch (error) {
+      console.error("Failed to initialize analytics:", error);
+    }
 
     // Handle page unload
     window.addEventListener("visibilitychange", () => {
@@ -205,36 +254,8 @@ class Analytics {
         this.flushEvents();
       }
     });
-  }
 
-  private setupMediaTracking(): void {
-    const mediaEvents = [
-      "play",
-      "pause",
-      "ended",
-      "timeupdate",
-      "volumechange",
-    ];
-
-    const handleMediaEvent = (event: Event): void => {
-      const media = event.target as HTMLMediaElement;
-      if (!media || !this.shouldTrackEvent(EventTypes.MEDIA)) return;
-
-      const mediaData: MediaData = {
-        media_type: media instanceof HTMLVideoElement ? "video" : "audio",
-        action: event.type,
-        media_url: media.currentSrc,
-        playback_time: media.currentTime,
-        duration: media.duration,
-        title: media.title || null,
-      };
-
-      this.queueEvent(EventTypes.MEDIA, mediaData);
-    };
-
-    mediaEvents.forEach((event) => {
-      document.addEventListener(event, handleMediaEvent, { passive: true });
-    });
+    console.log("Analytics initialization complete"); // Debug log
   }
 
   private setupIntersectionTracking(): void {
@@ -398,7 +419,11 @@ class Analytics {
   private handleVisibility = (): void => {
     if (!this.shouldTrackEvent(EventTypes.VISIBILITY)) return;
 
-    this.queueEvent(EventTypes.VISIBILITY, { state: document.visibilityState });
+    const visibilityData: VisibilityData = {
+      visibility_state: document.visibilityState as VisibilityState,
+      visibility_ratio: 1,
+    };
+    this.queueEvent(EventTypes.VISIBILITY, visibilityData);
   };
 
   private setupResourceTracking(): void {
@@ -528,22 +553,8 @@ class Analytics {
   };
 
   private handleScroll = (): void => {
-    // Only track scroll events for document level metrics
-    if (!this.shouldTrackEvent(EventTypes.SCROLL)) return;
-
-    const scrollData: ScrollData = {
-      depth: window.scrollY,
-      direction: window.scrollY > this.lastScrollPosition ? "down" : "up",
-      max_depth: document.documentElement.scrollHeight - window.innerHeight,
-      relative_depth: Math.round(
-        (window.scrollY /
-          (document.documentElement.scrollHeight - window.innerHeight)) *
-          100
-      ),
-    };
-
-    this.queueEvent(EventTypes.SCROLL, scrollData);
-    this.lastScrollPosition = window.scrollY;
+    // This is now just a placeholder as scroll handling is done in setupScrollTracking
+    return;
   };
 
   public logConversion(data: Partial<ConversionData>): void {
@@ -576,14 +587,20 @@ class Analytics {
   }
 
   private queueEvent(type: EventTypes, data: unknown): void {
-    const event = {
+    const event: QueuedEvent = {
       id: crypto.randomUUID(),
-      type,
-      data,
+      event_type: type,
+      data: {
+        ...(data as object),
+        event_id: crypto.randomUUID(),
+        globe_id: this.sessionId,
+        session_id: this.sessionId,
+        timestamp: new Date().toISOString(),
+      },
       timestamp: performance.now(),
     };
 
-    this.eventQueue.push(event as any);
+    this.eventQueue.push(event);
 
     if (this.eventQueue.size >= 50) {
       requestAnimationFrame(() => this.flushEvents());
@@ -594,15 +611,18 @@ class Analytics {
     const events = this.eventQueue.drain();
     if (!events.length) return;
 
-    const compressed = await this.compressEvents(events);
+    const analyticsEvents = this.transformQueuedEvents(events);
+    const compressed = await this.compressEvents(analyticsEvents);
+
+    // Comment out these API calls
 
     if (document.visibilityState === "hidden") {
-      navigator.sendBeacon("/analytics", compressed);
+      navigator.sendBeacon(API_URL, compressed);
       return;
     }
 
     try {
-      await fetch("/analytics", {
+      await fetch(API_URL, {
         method: "POST",
         body: compressed,
         keepalive: true,
@@ -630,39 +650,23 @@ class Analytics {
       .then((buffer) => new Uint8Array(buffer));
   }
 
-  private async storeForRetry(events: AnalyticsEventUnion[]): Promise<void> {
+  private async storeForRetry(events: QueuedEvent[]): Promise<void> {
     const db = await openDB("analytics", 1, {
       upgrade(db) {
         db.createObjectStore("failed_events", { keyPath: "timestamp" });
       },
     });
 
+    const analyticsEvents = this.transformQueuedEvents(events);
+
     const tx = db.transaction("failed_events", "readwrite");
     const store = tx.objectStore("failed_events");
 
     await Promise.all(
-      events.map((event) => store.add({ ...event, timestamp: Date.now() }))
+      analyticsEvents.map((event) =>
+        store.add({ ...event, timestamp: Date.now() })
+      )
     );
-  }
-
-  private setupClickTracking(): void {
-    // Use event delegation for all click tracking
-    document.addEventListener("click", this.handleClick, {
-      passive: true,
-      capture: true, // Capture phase to ensure we get all clicks
-    });
-
-    // Track programmatic clicks
-    const originalClick = HTMLElement.prototype.click;
-    HTMLElement.prototype.click = function (this: HTMLElement) {
-      originalClick.call(this);
-      const event = new MouseEvent("click", {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-      });
-      this.dispatchEvent(event);
-    };
   }
 
   private handleClick = (event: MouseEvent): void => {
@@ -785,21 +789,6 @@ class Analytics {
     return attrs;
   }
 
-  private getElementMetadata(element: Element): Record<string, unknown> {
-    return {
-      accessibility: {
-        role: element.getAttribute("role"),
-        label: element.getAttribute("aria-label"),
-        description: element.getAttribute("aria-description"),
-      },
-      interactivity: {
-        is_focusable: element.matches(":focusable"),
-        is_disabled: element.matches(":disabled"),
-        tab_index: element.getAttribute("tabindex"),
-      },
-    };
-  }
-
   private getOrCreateClickMetrics(elementId: string) {
     if (!this.clickMetrics.has(elementId)) {
       this.clickMetrics.set(elementId, {
@@ -828,6 +817,367 @@ class Analytics {
       rect.height > 0 &&
       window.getComputedStyle(element).visibility !== "hidden"
     );
+  }
+
+  private handleWorkerMessage = (event: MessageEvent): void => {
+    const { success, metadata, error } = event.data;
+    if (!success) {
+      console.error("[handleWorkerMessage] Analytics worker error:", error);
+      return;
+    }
+    // Handle successful processing
+    this.performanceMetrics.set("lastBatchSize", metadata.eventCount);
+    this.performanceMetrics.set(
+      "lastProcessingTime",
+      metadata.processedAt - metadata.timestamp
+    );
+  };
+
+  private handleWorkerError = (error: ErrorEvent): void => {
+    console.error("[handleWorkerError] Analytics worker error:", error);
+    // Implement fallback processing
+  };
+
+  private getDeviceInfo(): DeviceInfo {
+    return {
+      screen_resolution: {
+        width: window.screen.width,
+        height: window.screen.height,
+      },
+      color_depth: window.screen.colorDepth,
+      pixel_ratio: window.devicePixelRatio,
+      max_touch_points: navigator.maxTouchPoints,
+      memory: (navigator as any).deviceMemory || null,
+      hardware_concurrency: navigator.hardwareConcurrency,
+      device_memory: (navigator as any).deviceMemory || null,
+    };
+  }
+
+  private getBrowserInfo(): BrowserInfo {
+    return {
+      user_agent: navigator.userAgent,
+      language: navigator.language,
+      platform: navigator.platform || "unknown",
+      vendor: navigator.vendor || "unknown",
+      cookies_enabled: navigator.cookieEnabled,
+      do_not_track: navigator.doNotTrack === "1",
+      time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      time_zone_offset: new Date().getTimezoneOffset(),
+    };
+  }
+
+  private getNetworkInfo(): NetworkInfo {
+    const connection = (navigator as any).connection;
+    return {
+      connection_type: connection?.type || "unknown",
+      downlink: connection?.downlink || 0,
+      effective_type: connection?.effectiveType || "unknown",
+      rtt: connection?.rtt || 0,
+      save_data: connection?.saveData || false,
+      anonymize_ip: this.privacySettings.ipAnonymization,
+    };
+  }
+
+  private setupScrollTracking(): void {
+    // Track last scroll position and time
+    let lastScrollY = window.scrollY;
+    let lastScrollTime = Date.now();
+    let scrollTimeout: number | null = null;
+
+    // Minimum scroll distance (in pixels) to track
+    const MIN_SCROLL_DISTANCE = 100;
+    // Minimum time (in ms) between scroll events
+    const SCROLL_THROTTLE = 1000;
+    // Debounce time for final scroll position
+    const SCROLL_DEBOUNCE = 1500;
+
+    const handleScroll = () => {
+      // First check if we should track scroll events
+      if (!this.shouldTrackEvent(EventTypes.SCROLL)) return;
+
+      const now = Date.now();
+      const currentY = window.scrollY;
+      const scrollDelta = Math.abs(currentY - lastScrollY);
+
+      // Only track if enough time has passed AND scroll distance is significant
+      if (
+        scrollDelta >= MIN_SCROLL_DISTANCE &&
+        now - lastScrollTime >= SCROLL_THROTTLE
+      ) {
+        const scrollData: ScrollData = {
+          depth: currentY,
+          direction: currentY > lastScrollY ? "down" : "up",
+          max_depth: document.documentElement.scrollHeight - window.innerHeight,
+          relative_depth: Math.round(
+            (currentY /
+              (document.documentElement.scrollHeight - window.innerHeight)) *
+              100
+          ),
+        };
+
+        this.queueEvent(EventTypes.SCROLL, scrollData);
+        lastScrollY = currentY;
+        lastScrollTime = now;
+      }
+
+      // Debounce the final scroll position
+      if (scrollTimeout) {
+        window.clearTimeout(scrollTimeout);
+      }
+
+      scrollTimeout = window.setTimeout(() => {
+        // Check again in case settings changed during scroll
+        if (!this.shouldTrackEvent(EventTypes.SCROLL)) return;
+
+        // Only send final position if it's different from last tracked position
+        if (Math.abs(window.scrollY - lastScrollY) >= MIN_SCROLL_DISTANCE) {
+          const finalScrollData: ScrollData = {
+            depth: window.scrollY,
+            direction: "final",
+            max_depth:
+              document.documentElement.scrollHeight - window.innerHeight,
+            relative_depth: Math.round(
+              (window.scrollY /
+                (document.documentElement.scrollHeight - window.innerHeight)) *
+                100
+            ),
+          };
+          this.queueEvent(EventTypes.SCROLL, finalScrollData);
+          lastScrollY = window.scrollY;
+        }
+      }, SCROLL_DEBOUNCE);
+    };
+
+    // Use passive listener for better performance
+    window.addEventListener("scroll", handleScroll, { passive: true });
+  }
+
+  private setupFormTracking(): void {
+    // Track all form submissions using event delegation
+    document.addEventListener(
+      "submit",
+      (e: Event) => {
+        if (!this.shouldTrackEvent(EventTypes.FORM)) return;
+
+        const form = e.target as HTMLFormElement;
+        if (!this.shouldTrackElement(form)) return;
+
+        // Don't track sensitive forms
+        if (
+          form.getAttribute("data-analytics-ignore") ||
+          form.matches("form[id*=password], form[id*=login], form[id*=signin]")
+        )
+          return;
+
+        const formData = new FormData(form);
+        const safeFormData: Record<string, string> = {};
+
+        // Only collect safe, non-sensitive form fields
+        formData.forEach((value, key) => {
+          if (
+            !key.toLowerCase().includes("password") &&
+            !key.toLowerCase().includes("token") &&
+            !key.toLowerCase().includes("credit") &&
+            !key.toLowerCase().includes("card")
+          ) {
+            safeFormData[key] =
+              typeof value === "string" ? value : "file-upload";
+          }
+        });
+
+        this.queueEvent(EventTypes.FORM, {
+          form_id: form.id || this.getElementPath(form),
+          form_name: form.getAttribute("name") || form.id || "unnamed-form",
+          form_action: form.action,
+          form_method: form.method,
+          field_count: form.elements.length,
+          fields: safeFormData,
+          has_file_upload: form.enctype === "multipart/form-data",
+          timestamp: new Date().toISOString(),
+        });
+      },
+      { passive: true, capture: true }
+    );
+  }
+
+  private setupErrorTracking(): void {
+    // Global error handling
+    window.addEventListener("error", (event: ErrorEvent) => {
+      if (!this.shouldTrackEvent(EventTypes.ERROR)) return;
+
+      this.queueEvent(EventTypes.ERROR, {
+        error_type: event.error?.name || "Unknown",
+        message: event.error?.message || event.message,
+        stack_trace: event.error?.stack,
+        source: event.filename,
+        line: event.lineno,
+        column: event.colno,
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // Promise rejection handling
+    window.addEventListener(
+      "unhandledrejection",
+      (event: PromiseRejectionEvent) => {
+        if (!this.shouldTrackEvent(EventTypes.ERROR)) return;
+
+        this.queueEvent(EventTypes.ERROR, {
+          error_type: "UnhandledPromiseRejection",
+          message: event.reason?.message || String(event.reason),
+          stack_trace: event.reason?.stack,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    );
+  }
+
+  private setupConversionTracking(): void {
+    // Track elements with conversion attributes
+    document.addEventListener(
+      "click",
+      (event: MouseEvent) => {
+        if (!this.shouldTrackEvent(EventTypes.CONVERSION)) return;
+
+        const target = event.target as Element;
+        if (!target || !this.shouldTrackElement(target)) return;
+
+        const conversionData = target.getAttribute("data-analytics-conversion");
+        if (!conversionData) return;
+
+        try {
+          const conversion = JSON.parse(conversionData);
+          this.queueEvent(EventTypes.CONVERSION, {
+            type: conversion.type || "click",
+            value: conversion.value,
+            currency: conversion.currency || "USD",
+            product_id: conversion.product_id,
+            category: conversion.category,
+            element_path: this.getElementPath(target),
+            timestamp: new Date().toISOString(),
+          });
+        } catch (error) {
+          console.error("Invalid conversion data format:", error);
+        }
+      },
+      { passive: true, capture: true }
+    );
+  }
+
+  private setupPerformanceTracking(): void {
+    // Performance Observer for key metrics
+    if ("PerformanceObserver" in window) {
+      // Track page load metrics
+      const pageLoadObserver = new PerformanceObserver((list) => {
+        const entries = list.getEntries();
+        entries.forEach((entry) => {
+          if (entry.entryType === "navigation") {
+            const navEntry = entry as PerformanceNavigationTiming;
+            this.queueEvent(EventTypes.PERFORMANCE, {
+              type: "navigation",
+              dns: navEntry.domainLookupEnd - navEntry.domainLookupStart,
+              tcp: navEntry.connectEnd - navEntry.connectStart,
+              ttfb: navEntry.responseStart - navEntry.requestStart,
+              dom_load:
+                navEntry.domContentLoadedEventEnd -
+                navEntry.domContentLoadedEventStart,
+              load: navEntry.loadEventEnd - navEntry.loadEventStart,
+              total: navEntry.loadEventEnd - navEntry.startTime,
+            });
+          }
+        });
+      });
+
+      // Track largest contentful paint
+      const lcpObserver = new PerformanceObserver((list) => {
+        const entries = list.getEntries();
+        const lastEntry = entries[entries.length - 1];
+        this.queueEvent(EventTypes.PERFORMANCE, {
+          type: "lcp",
+          value: lastEntry.startTime,
+          element: (lastEntry as any).element?.tagName || "unknown",
+        });
+      });
+
+      // Track first input delay
+      const fidObserver = new PerformanceObserver((list) => {
+        const entries = list.getEntries();
+        entries.forEach((entry) => {
+          this.queueEvent(EventTypes.PERFORMANCE, {
+            type: "fid",
+            value: entry.duration,
+            target: (entry as any).target?.tagName || "unknown",
+          });
+        });
+      });
+
+      try {
+        pageLoadObserver.observe({ entryTypes: ["navigation"] });
+        lcpObserver.observe({ entryTypes: ["largest-contentful-paint"] });
+        fidObserver.observe({ entryTypes: ["first-input"] });
+      } catch (error) {
+        console.error("Performance observer error:", error);
+      }
+    }
+  }
+
+  private setupMediaTracking(): void {
+    // Track all video and audio elements using event delegation
+    document.addEventListener("play", this.handleMediaEvent, { capture: true });
+    document.addEventListener("pause", this.handleMediaEvent, {
+      capture: true,
+    });
+    document.addEventListener("ended", this.handleMediaEvent, {
+      capture: true,
+    });
+    document.addEventListener("timeupdate", this.handleMediaEvent, {
+      capture: true,
+    });
+    document.addEventListener("seeking", this.handleMediaEvent, {
+      capture: true,
+    });
+  }
+
+  private handleMediaEvent = (event: Event): void => {
+    if (!this.shouldTrackEvent(EventTypes.MEDIA)) return;
+
+    const media = event.target as HTMLMediaElement;
+    if (!media || !this.shouldTrackElement(media)) return;
+
+    // Only track every 10% progress for timeupdate
+    if (event.type === "timeupdate") {
+      const progress = (media.currentTime / media.duration) * 100;
+      if (progress % 10 !== 0) return;
+    }
+
+    this.queueEvent(EventTypes.MEDIA, {
+      media_type: media instanceof HTMLVideoElement ? "video" : "audio",
+      action: event.type,
+      media_url: media.currentSrc,
+      playback_time: media.currentTime,
+      duration: media.duration,
+      progress_percentage: media.duration
+        ? (media.currentTime / media.duration) * 100
+        : 0,
+      timestamp: new Date().toISOString(),
+      media_id: media.id || this.getElementPath(media),
+      is_muted: media.muted,
+      volume: media.volume,
+      playback_rate: media.playbackRate,
+      title: media.title || null,
+    });
+  };
+
+  private transformQueuedEvents(events: QueuedEvent[]): AnalyticsEventUnion[] {
+    return events.map((event) => ({
+      globe_id: this.sessionId,
+      event_id: event.id,
+      timestamp: new Date().toISOString(),
+      session_id: this.sessionId,
+      client_timestamp: new Date(event.timestamp).toISOString(),
+      event_type: event.event_type,
+      data: event.data,
+    })) as AnalyticsEventUnion[];
   }
 }
 

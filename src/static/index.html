@@ -68,12 +68,22 @@
     </div>
 
     <!-- Scroll Test -->
-    <div style="height: 200vh; padding: 20px;">
+    <div id="scrollTest" style="height: 200vh; padding: 20px;">
         Scroll down this long div!
     </div>
 
 
-    <script type="module" src="/dist/analytics.js"></script>
+    <script type="module">
+      import Analytics from '/dist/analytics.js';
+    </script>
+    <script>
+        fetch('./analytics.worker.js')
+          .then(response => {
+            if (!response.ok) throw new Error('Worker file not found');
+            console.log('Worker file accessible');
+          })
+          .catch(error => console.error('Worker file error:', error));
+      </script>
 </body>
 
 </html>

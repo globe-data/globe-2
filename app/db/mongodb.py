@@ -1,10 +1,13 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson.codec_options import CodecOptions
 from bson.binary import UuidRepresentation
-from app.config.logger import logger
 from app.config.settings import settings
 import asyncio
 from typing import Optional
+
+from logging import getLogger
+
+logger = getLogger(__name__)
 
 
 class MongoDB:

@@ -1,5 +1,6 @@
 # Standard library imports
 from uuid import UUID
+from pydantic import ValidationError
 
 # FastAPI imports
 from fastapi import (
@@ -7,7 +8,6 @@ from fastapi import (
     Body,
     Depends,
     HTTPException,
-    Request,
     Response,
     status,
 )
@@ -18,11 +18,14 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 # Local imports
 from app.models import AnalyticsBatch, AnalyticsBatchResponse, AnalyticsEvent
 from app.api import deps
-from app.config import logger
+
+from logging import getLogger
+
+logger = getLogger(__name__)
 
 analytics_router = APIRouter(tags=["analytics"])
 
-
+# Main batch endpoint
 @analytics_router.post(
     "/batch",
     summary="Process analytics batch",
@@ -42,22 +45,35 @@ async def process_batch(
 ) -> AnalyticsBatchResponse:
     try:
         if not batch.events:
+            logger.warning("Received empty batch")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Batch must contain events",
             )
 
+        # Log incoming batch details
+        logger.debug(
+            f"Received batch with {len(batch.events)} events"
+        )
+
         # Convert events to dict and store in MongoDB
         events = [event.model_dump() for event in batch.events]
         result = await db.events.insert_many(events)
 
-        logger.info(f"Stored {len(result.inserted_ids)} events")
+        logger.info(f"Successfully sotred batch {str(result.inserted_ids)}")
 
         response.status_code = status.HTTP_201_CREATED
         return AnalyticsBatchResponse(success=True)
 
+    except ValidationError as e:
+        logger.error(f"Error saving batch {str(e)}")
+
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.errors()
+        )
     except Exception as e:
-        logger.error(f"Unexpected error occurred: {str(e)}", exc_info=True)
+        logger.error(f"Error saving batch {str(e)}")
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred processing the analytics batch",

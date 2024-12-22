@@ -52,7 +52,7 @@ export type AnalyticsEventUnion =
  */
 export interface QueuedEvent {
   id: string;
-  type: EventTypes;
+  event_type: EventTypes;
   data: unknown;
   timestamp: number;
 }

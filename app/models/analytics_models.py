@@ -5,11 +5,17 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, ValidationError
 
+from logging import getLogger
+
+logger = getLogger(__name__)
+
+
 ## EVENT TYPES
 class EventTypes(StrEnum):
     """Enumeration of possible analytics event types."""
+
     PAGEVIEW = "pageview"
-    CLICK = "click" 
+    CLICK = "click"
     SCROLL = "scroll"
     MEDIA = "media"
     FORM = "form"
@@ -24,17 +30,20 @@ class EventTypes(StrEnum):
     IDLE = "idle"
     CUSTOM = "custom"
 
+
 class VisibilityState(StrEnum):
     """Enumeration of possible visibility states for a page/element."""
+
     HIDDEN = "hidden"
     VISIBLE = "visible"
     PRERENDER = "prerender"
     UNLOADED = "unloaded"
 
+
 ## EVENT BASE MODEL
 class Event(BaseModel):
     """Base model for analytics events.
-    
+
     Attributes:
         globe_id: Unique identifier for the globe instance
         event_id: Unique identifier for this specific event
@@ -42,16 +51,18 @@ class Event(BaseModel):
         session_id: Unique identifier for the user session
         client_timestamp: Browser-side timestamp when event occurred
     """
+
     globe_id: UUID
     event_id: UUID
     timestamp: datetime
     session_id: UUID
     client_timestamp: datetime
 
+
 ## SYSTEM INFORMATION
 class BrowserInfo(BaseModel):
     """Model containing browser-specific information.
-    
+
     Attributes:
         user_agent: Browser's user agent string
         language: Browser's language setting
@@ -62,6 +73,7 @@ class BrowserInfo(BaseModel):
         time_zone: User's timezone name
         time_zone_offset: Timezone offset in minutes
     """
+
     user_agent: str
     language: str
     platform: str
@@ -71,19 +83,22 @@ class BrowserInfo(BaseModel):
     time_zone: str
     time_zone_offset: int
 
+
 class ScreenResolution(BaseModel):
     """Model representing screen dimensions.
-    
+
     Attributes:
         width: Screen width in pixels
         height: Screen height in pixels
     """
+
     width: int
     height: int
 
+
 class DeviceInfo(BaseModel):
     """Model containing device-specific information.
-    
+
     Attributes:
         screen_resolution: Screen dimensions
         color_depth: Number of bits used for colors
@@ -93,6 +108,7 @@ class DeviceInfo(BaseModel):
         hardware_concurrency: Number of logical processors
         device_memory: Device memory in GB
     """
+
     screen_resolution: ScreenResolution
     color_depth: int
     pixel_ratio: float
@@ -101,9 +117,10 @@ class DeviceInfo(BaseModel):
     hardware_concurrency: Optional[int]
     device_memory: Optional[int]
 
+
 class NetworkInfo(BaseModel):
     """Model containing network connection information.
-    
+
     Attributes:
         connection_type: Type of network connection
         downlink: Effective bandwidth in Mbps
@@ -112,6 +129,7 @@ class NetworkInfo(BaseModel):
         save_data: Whether data saver is enabled
         anonymize_ip: Whether to anonymize IP address
     """
+
     connection_type: str
     downlink: float
     effective_type: str
@@ -119,11 +137,13 @@ class NetworkInfo(BaseModel):
     save_data: bool
     anonymize_ip: bool
 
+
 ## ANALYTICS EVENT DATA
+
 
 class PageViewData(BaseModel):
     """Model representing data for a pageview event.
-    
+
     Attributes:
         url: URL of the pageview
         referrer: URL of the page that linked to this page
@@ -132,6 +152,7 @@ class PageViewData(BaseModel):
         viewport: Screen resolution of the viewport
         load_time: Time taken to load the page in seconds
     """
+
     url: str
     referrer: Optional[str]
     title: str
@@ -139,9 +160,10 @@ class PageViewData(BaseModel):
     viewport: ScreenResolution
     load_time: float
 
+
 class ClickData(BaseModel):
     """Model representing data for a click event.
-    
+
     Attributes:
         element_path: DOM path to clicked element
         element_text: Text content of clicked element
@@ -150,32 +172,77 @@ class ClickData(BaseModel):
         x_pos: Horizontal click position
         y_pos: Vertical click position
         href: Optional link URL if element was a link
+        interaction_count: Number of times the element has been interacted with
+        interaction_types: List of interaction types
+        is_programmatic: Whether the click was programmatic
+        element_metadata: Additional metadata about the element
     """
+
     element_path: str
     element_text: str
-    target: Dict[str, Any]
-    page: Dict[str, Any]
+    target: Dict[str, Any] = Field(
+        ...,
+        description="Additional properties of clicked element",
+        example={
+            "tag": "button",
+            "classes": ["btn", "btn-primary"],
+            "attributes": {"id": "submit-btn"},
+            "dimensions": {"x": 0, "y": 0, "width": 100, "height": 30},
+            "visible": True,
+        },
+    )
+    page: Dict[str, Any] = Field(
+        ...,
+        description="Page context where click occurred",
+        example={
+            "url": "https://example.com",
+            "title": "Example Page",
+            "viewport": {"width": 1920, "height": 1080},
+        },
+    )
     x_pos: float
     y_pos: float
     href: Optional[str]
+    interaction_count: int
+    interaction_types: List[str]
+    is_programmatic: bool
+    element_metadata: Dict[str, Any] = Field(
+        ...,
+        description="Additional metadata about the element",
+        example={
+            "accessibility": {
+                "role": "button",
+                "label": "Submit",
+                "description": "Submit form",
+            },
+            "interactivity": {
+                "is_focusable": True,
+                "is_disabled": False,
+                "tab_index": "0",
+            },
+        },
+    )
+
 
 class ScrollData(BaseModel):
     """Model representing data for a scroll event.
-    
+
     Attributes:
         depth: Current scroll depth in pixels
         direction: Direction of scroll (up/down)
         max_depth: Maximum scroll depth reached
         relative_depth: Scroll depth as percentage of page height
     """
+
     depth: float
     direction: str
     max_depth: float
     relative_depth: float
 
+
 class MediaData(BaseModel):
     """Model representing data for a media playback event.
-    
+
     Attributes:
         media_type: Type of media (audio/video)
         action: Media action performed (play/pause/etc)
@@ -184,6 +251,7 @@ class MediaData(BaseModel):
         duration: Total duration of media
         title: Optional media title
     """
+
     media_type: str
     action: str
     media_url: str
@@ -191,9 +259,10 @@ class MediaData(BaseModel):
     duration: float
     title: Optional[str]
 
+
 class FormData(BaseModel):
     """Model representing data for a form interaction event.
-    
+
     Attributes:
         form_id: Identifier for the form
         action: Form action performed (submit/reset/etc)
@@ -201,65 +270,96 @@ class FormData(BaseModel):
         success: Whether form submission succeeded
         error_message: Optional error message if submission failed
     """
+
     form_id: str
     action: str
     fields: List[str]
     success: bool
     error_message: Optional[str]
 
+
 class ConversionData(BaseModel):
     """Model representing data for a conversion event.
-    
+
     Attributes:
         conversion_type: Type of conversion
         value: Monetary value of conversion
         currency: Currency code for value
         products: Optional list of product identifiers
     """
+
     conversion_type: str
     value: float
     currency: str
     products: Optional[List[str]]
 
+
 class ErrorData(BaseModel):
     """Model representing data for an error event.
-    
+
     Attributes:
         error_type: Type/category of error
         message: Error message
         stack_trace: Error stack trace
         component: Component where error occurred
     """
+
     error_type: str
     message: str
     stack_trace: str
     component: str
 
+
 class PerformanceData(BaseModel):
     """Model representing data for a performance metric event.
-    
+
     Attributes:
         metric_name: Name of performance metric
         value: Measured value
         navigation_type: Type of navigation (navigate/reload/etc)
         effective_connection_type: Effective network connection type
     """
+
     metric_name: str
     value: float
     navigation_type: str
     effective_connection_type: str
+
+
 class VisibilityData(BaseModel):
     """Model representing data for a visibility state change event.
-    
+
     Attributes:
         visibility_state: New visibility state
+        element_id: ID of the element that changed visibility
+        element_type: Type of the element that changed visibility
+        visibility_ratio: Ratio of visible area to total area of the element
         time_visible: Time spent in visible state
+        viewport_area: Area of the viewport in pixels
+        intersection_rect: Intersection rectangle coordinates
     """
+
     visibility_state: VisibilityState
+    element_id: Optional[str] = None
+    element_type: Optional[str] = None
+    visibility_ratio: float
+    time_visible: Optional[float] = None
+    viewport_area: Optional[float] = None
+    intersection_rect: Optional[Dict[str, float]] = Field(
+        None,
+        description="Intersection rectangle coordinates",
+        example={
+            "top": 0,
+            "left": 0,
+            "bottom": 100,
+            "right": 100,
+        },
+    )
+
 
 class LocationData(BaseModel):
     """Model representing data for a location/geolocation event.
-    
+
     Attributes:
         latitude: Geographic latitude coordinate
         longitude: Geographic longitude coordinate
@@ -269,6 +369,7 @@ class LocationData(BaseModel):
         city: City name
         timezone: Timezone identifier
     """
+
     latitude: float
     longitude: float
     accuracy: float
@@ -277,33 +378,38 @@ class LocationData(BaseModel):
     city: str
     timezone: str
 
+
 class TabData(BaseModel):
     """Model representing data for a tab event.
-    
+
     Attributes:
         tab_id: Unique identifier for the tab
         tab_title: Title of the tab
         tab_url: URL loaded in the tab
     """
+
     tab_id: str
     tab_title: str
     tab_url: str
 
+
 class StorageData(BaseModel):
     """Model representing data for a storage operation event.
-    
+
     Attributes:
         storage_type: Type of storage (local/session/etc)
         key: Storage key accessed
         value: Storage value
     """
+
     storage_type: str
     key: str
     value: str
 
+
 class ResourceData(BaseModel):
     """Model representing data for a resource load event.
-    
+
     Attributes:
         resource_type: Type of resource loaded
         url: Resource URL
@@ -313,6 +419,7 @@ class ResourceData(BaseModel):
         cache_hit: Whether resource was served from cache
         priority: Resource loading priority
     """
+
     resource_type: str
     url: str
     duration: float
@@ -321,123 +428,162 @@ class ResourceData(BaseModel):
     cache_hit: Optional[bool]
     priority: str
 
+
 class IdleData(BaseModel):
     """Model representing data for an idle state event.
-    
+
     Attributes:
         idle_time: Duration of idle state
         last_interaction: Type of last user interaction
         is_idle: Whether user is currently idle
     """
+
     idle_time: float
     last_interaction: str
     is_idle: bool
+
 
 ## ANALYTICS EVENTS
 
 EVENT_MODELS: Dict[EventTypes, Type[Event]] = {}
 
+
 def register_event(event_type: EventTypes):
     """Decorator to register event models."""
+
     def wrapper(cls):
         EVENT_MODELS[event_type] = cls
         return cls
+
     return wrapper
+
 
 @register_event(EventTypes.PAGEVIEW)
 class PageViewEvent(Event):
     """Event model for pageview events."""
+
     event_type: Literal[EventTypes.PAGEVIEW]
     data: PageViewData
+
 
 @register_event(EventTypes.CLICK)
 class ClickEvent(Event):
     """Event model for click events."""
+
     event_type: Literal[EventTypes.CLICK]
     data: ClickData
+
 
 @register_event(EventTypes.SCROLL)
 class ScrollEvent(Event):
     """Event model for scroll events."""
+
     event_type: Literal[EventTypes.SCROLL]
     data: ScrollData
+
 
 @register_event(EventTypes.MEDIA)
 class MediaEvent(Event):
     """Event model for media playback events."""
+
     event_type: Literal[EventTypes.MEDIA]
     data: MediaData
+
 
 @register_event(EventTypes.FORM)
 class FormEvent(Event):
     """Event model for form interaction events."""
+
     event_type: Literal[EventTypes.FORM]
     data: FormData
+
 
 @register_event(EventTypes.CONVERSION)
 class ConversionEvent(Event):
     """Event model for conversion events."""
+
     event_type: Literal[EventTypes.CONVERSION]
     data: ConversionData
+
 
 @register_event(EventTypes.ERROR)
 class ErrorEvent(Event):
     """Event model for error events."""
+
     event_type: Literal[EventTypes.ERROR]
     data: ErrorData
+
 
 @register_event(EventTypes.PERFORMANCE)
 class PerformanceEvent(Event):
     """Event model for performance metric events."""
+
     event_type: Literal[EventTypes.PERFORMANCE]
     data: PerformanceData
+
 
 @register_event(EventTypes.VISIBILITY)
 class VisibilityEvent(Event):
     """Event model for visibility state events."""
+
     event_type: Literal[EventTypes.VISIBILITY]
     data: VisibilityData
+
 
 @register_event(EventTypes.LOCATION)
 class LocationEvent(Event):
     """Event model for location change events."""
+
     event_type: Literal[EventTypes.LOCATION]
     data: LocationData
+
 
 @register_event(EventTypes.TAB)
 class TabEvent(Event):
     """Event model for tab events."""
+
     event_type: Literal[EventTypes.TAB]
     data: TabData
+
 
 @register_event(EventTypes.STORAGE)
 class StorageEvent(Event):
     """Event model for storage operation events."""
+
     event_type: Literal[EventTypes.STORAGE]
     data: StorageData
+
 
 @register_event(EventTypes.RESOURCE)
 class ResourceEvent(Event):
     """Event model for resource load events."""
+
     event_type: Literal[EventTypes.RESOURCE]
     data: ResourceData
+
 
 @register_event(EventTypes.IDLE)
 class IdleEvent(Event):
     """Event model for idle state events."""
+
     event_type: Literal[EventTypes.IDLE]
     data: IdleData
 
+
 class CustomEvent(Event):
     """Event model for custom events with arbitrary data."""
+
     event_type: Literal[EventTypes.CUSTOM]
     name: str
     data: Dict[str, Any]
 
+
 ## REQUEST/RESPONSE MODELS
+
 
 class AnalyticsBatch(BaseModel):
     """Model representing a batch of analytics events and system information."""
+
     events: List[
         Annotated[
             Union[
@@ -455,9 +601,9 @@ class AnalyticsBatch(BaseModel):
                 StorageEvent,
                 ResourceEvent,
                 IdleEvent,
-                CustomEvent
+                CustomEvent,
             ],
-            Field(discriminator='event_type')
+            Field(discriminator="event_type"),
         ]
     ] = Field(default_factory=list)
     browser: BrowserInfo
@@ -469,13 +615,13 @@ class AnalyticsBatch(BaseModel):
         extra = "allow"  # Allow extra fields
         validate_default = False  # Don't validate default values
 
-    @field_validator('events', mode='before')
+    @field_validator("events", mode="before")
     def validate_events(cls, events):
         validated_events = []
         for event in events:
             try:
                 if isinstance(event, dict):
-                    event_type = event.get('event_type')
+                    event_type = event.get("event_type")
                     if event_type in EVENT_MODELS:
                         model = EVENT_MODELS[EventTypes(event_type)]
                         validated_event = model(**event)
@@ -484,19 +630,24 @@ class AnalyticsBatch(BaseModel):
                         validated_event = CustomEvent(**event)
                         validated_events.append(validated_event)
             except (ValueError, ValidationError):
-                # logger.info(f"Invalid event: {event}")
+                logger.info(f"Invalid event: {event}")
                 continue  # Skip invalid events
         return validated_events
 
+
 class AnalyticsEvent(BaseModel):
     """Model representing an analytics event."""
+
     event_id: UUID
     event_type: EventTypes
     data: Dict[str, Any]
 
+
 class AnalyticsBatchResponse(BaseModel):
     """Model representing a response to an analytics batch request."""
+
     success: bool
+
 
 # Add this mapping at the module level
 EVENT_TYPE_TO_MODEL = {
@@ -513,10 +664,11 @@ EVENT_TYPE_TO_MODEL = {
     EventTypes.TAB: TabData,
     EventTypes.STORAGE: StorageData,
     EventTypes.RESOURCE: ResourceData,
-    EventTypes.IDLE: IdleData
+    EventTypes.IDLE: IdleData,
 }
 
 __all__ = [
-    name for name, obj in globals().items() 
+    name
+    for name, obj in globals().items()
     if isinstance(obj, type) and issubclass(obj, BaseModel) and obj != BaseModel
 ]

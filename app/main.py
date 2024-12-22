@@ -6,12 +6,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
+from logging import getLogger  
+
 from .config.settings import settings
-from .config.logger import setup_logger
 from .api.router import api_router
 from app.db.mongodb import db
 
-logger = setup_logger(settings.log_level)
+logger = getLogger(__name__)
 
 
 @asynccontextmanager
