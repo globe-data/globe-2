@@ -42,6 +42,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/status", 
+    summary="Check API status",
+    description="Returns the current status of the API",
+    response_description="API status",
+    responses={
+        200: {"description": "API is operational"},
+        503: {"description": "API is not operational"}
+    }
+)
+async def status():
+    try:
+        # Check if database is connected
+        if not db.client:
+            return {"status": "error", "message": "Database not connected"}, 503
+        return {"status": "ok", "message": "API is operational"}, 200
+    except Exception as e:
+        logger.error(f"Error checking status: {str(e)}")
+        return {"status": "error", "message": str(e)}, 503
+
+
 if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
