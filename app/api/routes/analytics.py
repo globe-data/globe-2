@@ -1,6 +1,8 @@
 # Standard library imports
 from uuid import UUID
 from pydantic import ValidationError
+from logging import getLogger, StreamHandler, Formatter
+import sys
 
 # FastAPI imports
 from fastapi import (
@@ -10,7 +12,6 @@ from fastapi import (
     HTTPException,
     Response,
     status,
-    Request,
 )
 
 # Third-party imports
@@ -20,9 +21,13 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.models import AnalyticsBatch, AnalyticsBatchResponse, AnalyticsEvent
 from app.api import deps
 
-from logging import getLogger
-
+# Configure logger
 logger = getLogger(__name__)
+if not logger.handlers:
+    handler = StreamHandler(sys.stdout)
+    handler.setFormatter(Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(handler)
+    logger.setLevel("DEBUG")  # Set appropriate level
 
 analytics_router = APIRouter(tags=["analytics"])
 
@@ -40,14 +45,11 @@ analytics_router = APIRouter(tags=["analytics"])
     },
 )
 async def process_batch(
-    request: Request,
     batch: AnalyticsBatch = Body(...),
     db: AsyncIOMotorDatabase = Depends(deps.get_database),
     response: Response = Response,
 ) -> AnalyticsBatchResponse:
     try:
-        logger.debug(f"Received batch: {batch.model_dump_json(indent=2)}")
-
         if not batch.events:
             logger.warning("Received empty batch")
             raise HTTPException(
@@ -59,9 +61,13 @@ async def process_batch(
         events = [event.model_dump() for event in batch.events]
         result = await db.events.insert_many(events)
 
+        # Extract event_ids from the original events since MongoDB ObjectIds can't be converted to UUIDs
+        event_ids = [event.event_id for event in batch.events]
+        logger.debug(f"Stored {len(event_ids)} events")
+
         response.status_code = status.HTTP_201_CREATED
         return AnalyticsBatchResponse(
-            success=True, events_stored=result.inserted_ids
+            success=True, events_stored=event_ids
         )
 
     except ValidationError as e:

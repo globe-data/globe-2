@@ -12,56 +12,44 @@ export type VisibilityState = "hidden" | "visible" | "prerender" | "unloaded";
 /**
  * Enumeration of possible analytics event types.
  */
-export enum EventTypes {
-  pageview = "pageview",
-  click = "click",
-  scroll = "scroll",
-  media = "media",
-  form = "form",
-  conversion = "conversion",
-  error = "error",
-  performance = "performance",
-  visibility = "visibility",
-  location = "location",
-  tab = "tab",
-  storage = "storage",
-  resource = "resource",
-  idle = "idle",
-  custom = "custom",
-}
-
-export type AnalyticsEventUnion =
-  | PageViewEvent
-  | ClickEvent
-  | ScrollEvent
-  | MediaEvent
-  | FormEvent
-  | ConversionEvent
-  | ErrorEvent
-  | PerformanceEvent
-  | VisibilityEvent
-  | LocationEvent
-  | TabEvent
-  | StorageEvent
-  | ResourceEvent
-  | IdleEvent
-  | CustomEvent;
-
-/**
- * Model representing a queued event.
- */
-export interface QueuedEvent {
-  id: string;
-  event_type: EventTypes;
-  data: unknown;
-  timestamp: number;
-}
+export type EventTypes =
+  | "pageview"
+  | "click"
+  | "scroll"
+  | "media"
+  | "form"
+  | "conversion"
+  | "error"
+  | "performance"
+  | "visibility"
+  | "location"
+  | "tab"
+  | "storage"
+  | "resource"
+  | "idle"
+  | "custom";
 
 /**
  * Model representing a batch of analytics events and system information.
  */
 export interface AnalyticsBatch {
-  events: AnalyticsEventUnion[];
+  events?: (
+    | PageViewEvent
+    | ClickEvent
+    | ScrollEvent
+    | MediaEvent
+    | FormEvent
+    | ConversionEvent
+    | ErrorEvent
+    | PerformanceEvent
+    | VisibilityEvent
+    | LocationEvent
+    | TabEvent
+    | StorageEvent
+    | ResourceEvent
+    | IdleEvent
+    | CustomEvent
+  )[];
   browser: BrowserInfo;
   device: DeviceInfo;
   network: NetworkInfo;
@@ -76,6 +64,9 @@ export interface PageViewEvent {
   timestamp: string;
   session_id: string;
   client_timestamp: string;
+  domain: string;
+  url: string;
+  referrer: string | null;
   event_type: "pageview";
   data: PageViewData;
 }
@@ -118,6 +109,9 @@ export interface ClickEvent {
   timestamp: string;
   session_id: string;
   client_timestamp: string;
+  domain: string;
+  url: string;
+  referrer: string | null;
   event_type: "click";
   data: ClickData;
 }
@@ -132,21 +126,25 @@ export interface ClickEvent {
  *     x_pos: Horizontal click position
  *     y_pos: Vertical click position
  *     href: Optional link URL if element was a link
+ *     interaction_count: Number of times the element has been interacted with
+ *     interaction_types: List of interaction types
+ *     is_programmatic: Whether the click was programmatic
+ *     element_metadata: Additional metadata about the element
  */
 export interface ClickData {
   element_path: string;
   element_text: string;
+  /**
+   * Additional properties of clicked element
+   */
   target: {
-    tag: string;
-    classes: string[];
-    attributes: Record<string, string>;
-    dimensions: DOMRect;
-    visible: boolean;
+    [k: string]: unknown;
   };
+  /**
+   * Page context where click occurred
+   */
   page: {
-    url: string;
-    title: string;
-    viewport: ScreenResolution;
+    [k: string]: unknown;
   };
   x_pos: number;
   y_pos: number;
@@ -154,17 +152,11 @@ export interface ClickData {
   interaction_count: number;
   interaction_types: string[];
   is_programmatic: boolean;
+  /**
+   * Additional metadata about the element
+   */
   element_metadata: {
-    accessibility: {
-      role: string | null;
-      label: string | null;
-      description: string | null;
-    };
-    interactivity: {
-      is_focusable: boolean;
-      is_disabled: boolean;
-      tab_index: string | null;
-    };
+    [k: string]: unknown;
   };
 }
 /**
@@ -176,6 +168,9 @@ export interface ScrollEvent {
   timestamp: string;
   session_id: string;
   client_timestamp: string;
+  domain: string;
+  url: string;
+  referrer: string | null;
   event_type: "scroll";
   data: ScrollData;
 }
@@ -203,6 +198,9 @@ export interface MediaEvent {
   timestamp: string;
   session_id: string;
   client_timestamp: string;
+  domain: string;
+  url: string;
+  referrer: string | null;
   event_type: "media";
   data: MediaData;
 }
@@ -234,6 +232,9 @@ export interface FormEvent {
   timestamp: string;
   session_id: string;
   client_timestamp: string;
+  domain: string;
+  url: string;
+  referrer: string | null;
   event_type: "form";
   data: FormData;
 }
@@ -263,6 +264,9 @@ export interface ConversionEvent {
   timestamp: string;
   session_id: string;
   client_timestamp: string;
+  domain: string;
+  url: string;
+  referrer: string | null;
   event_type: "conversion";
   data: ConversionData;
 }
@@ -290,6 +294,9 @@ export interface ErrorEvent {
   timestamp: string;
   session_id: string;
   client_timestamp: string;
+  domain: string;
+  url: string;
+  referrer: string | null;
   event_type: "error";
   data: ErrorData;
 }
@@ -305,7 +312,7 @@ export interface ErrorEvent {
 export interface ErrorData {
   error_type: string;
   message: string;
-  stack_trace: string | null;
+  stack_trace: string;
   component: string;
 }
 /**
@@ -317,6 +324,9 @@ export interface PerformanceEvent {
   timestamp: string;
   session_id: string;
   client_timestamp: string;
+  domain: string;
+  url: string;
+  referrer: string | null;
   event_type: "performance";
   data: PerformanceData;
 }
@@ -344,6 +354,9 @@ export interface VisibilityEvent {
   timestamp: string;
   session_id: string;
   client_timestamp: string;
+  domain: string;
+  url: string;
+  referrer: string | null;
   event_type: "visibility";
   data: VisibilityData;
 }
@@ -352,21 +365,26 @@ export interface VisibilityEvent {
  *
  * Attributes:
  *     visibility_state: New visibility state
+ *     element_id: ID of the element that changed visibility
+ *     element_type: Type of the element that changed visibility
+ *     visibility_ratio: Ratio of visible area to total area of the element
  *     time_visible: Time spent in visible state
+ *     viewport_area: Area of the viewport in pixels
+ *     intersection_rect: Intersection rectangle coordinates
  */
 export interface VisibilityData {
   visibility_state: VisibilityState;
-  element_id?: string;
-  element_type?: string;
+  element_id?: string | null;
+  element_type?: string | null;
   visibility_ratio: number;
-  time_visible?: number;
-  viewport_area?: number;
+  time_visible?: number | null;
+  viewport_area?: number | null;
+  /**
+   * Intersection rectangle coordinates
+   */
   intersection_rect?: {
-    top: number;
-    left: number;
-    bottom: number;
-    right: number;
-  };
+    [k: string]: number;
+  } | null;
 }
 /**
  * Event model for location change events.
@@ -377,6 +395,9 @@ export interface LocationEvent {
   timestamp: string;
   session_id: string;
   client_timestamp: string;
+  domain: string;
+  url: string;
+  referrer: string | null;
   event_type: "location";
   data: LocationData;
 }
@@ -410,6 +431,9 @@ export interface TabEvent {
   timestamp: string;
   session_id: string;
   client_timestamp: string;
+  domain: string;
+  url: string;
+  referrer: string | null;
   event_type: "tab";
   data: TabData;
 }
@@ -435,6 +459,9 @@ export interface StorageEvent {
   timestamp: string;
   session_id: string;
   client_timestamp: string;
+  domain: string;
+  url: string;
+  referrer: string | null;
   event_type: "storage";
   data: StorageData;
 }
@@ -460,6 +487,9 @@ export interface ResourceEvent {
   timestamp: string;
   session_id: string;
   client_timestamp: string;
+  domain: string;
+  url: string;
+  referrer: string | null;
   event_type: "resource";
   data: ResourceData;
 }
@@ -481,7 +511,7 @@ export interface ResourceData {
   duration: number;
   transfer_size: number;
   compression_ratio: number | null;
-  cache_hit: boolean;
+  cache_hit: boolean | null;
   priority: string;
 }
 /**
@@ -493,6 +523,9 @@ export interface IdleEvent {
   timestamp: string;
   session_id: string;
   client_timestamp: string;
+  domain: string;
+  url: string;
+  referrer: string | null;
   event_type: "idle";
   data: IdleData;
 }
@@ -518,6 +551,9 @@ export interface CustomEvent {
   timestamp: string;
   session_id: string;
   client_timestamp: string;
+  domain: string;
+  url: string;
+  referrer: string | null;
   event_type: "custom";
   name: string;
   data: {
@@ -592,6 +628,7 @@ export interface NetworkInfo {
  */
 export interface AnalyticsBatchResponse {
   success: boolean;
+  events_stored: string[] | null;
 }
 /**
  * Model representing an analytics event.
@@ -619,4 +656,7 @@ export interface Event {
   timestamp: string;
   session_id: string;
   client_timestamp: string;
+  domain: string;
+  url: string;
+  referrer: string | null;
 }

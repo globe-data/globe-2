@@ -62,6 +62,9 @@ class Event(BaseModel):
     timestamp: datetime
     session_id: UUID
     client_timestamp: datetime
+    domain: str
+    url: str
+    referrer: Optional[str]
 
 
 ## SYSTEM INFORMATION

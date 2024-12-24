@@ -10,6 +10,8 @@ const baseConfig = {
     "src/static/ts/analytics.ts",
     "src/static/ts/analytics.worker.ts",
     "src/static/ts/authWebhook.ts",
+    "src/static/ts/types/custom_types.ts",
+    "src/static/ts/types/pydantic_types.ts",
   ],
   bundle: true,
   outdir: "dist",

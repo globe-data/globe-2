@@ -1,6 +1,5 @@
 import {
   EventTypes,
-  AnalyticsEventUnion,
   ClickData,
   ScrollData,
   MediaData,
@@ -15,11 +14,12 @@ import {
   BrowserInfo,
   DeviceInfo,
   NetworkInfo,
-  QueuedEvent,
   VisibilityState,
   AnalyticsBatch,
-} from "./types/events";
+} from "./types/pydantic_types";
 import { openDB } from "idb";
+import { QueuedEvent, AnalyticsEventUnion } from "./types/custom_types";
+import { EventTypesEnum } from "./types/custom_types";
 
 /**
  * Optimized Analytics class using modern browser APIs and performance best practices
@@ -175,7 +175,7 @@ class Analytics {
       gdprConsent: true,
       ccpaCompliance: true,
       dataRetentionDays: 90,
-      allowedDataTypes: Object.values(EventTypes),
+      allowedDataTypes: Object.values(EventTypesEnum) as EventTypes[],
       ipAnonymization: false,
       sensitiveDataFields: [],
       cookiePreferences: {
@@ -232,7 +232,7 @@ class Analytics {
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (!this.shouldTrackEvent(EventTypes.visibility)) return;
+          if (!this.shouldTrackEvent(EventTypesEnum.visibility)) return;
 
           const element = entry.target;
           const now = performance.now();
@@ -270,7 +270,7 @@ class Analytics {
             },
           };
 
-          this.queueEvent(EventTypes.visibility, visibilityData);
+          this.queueEvent(EventTypesEnum.visibility, visibilityData);
         });
       },
       {
@@ -386,7 +386,7 @@ class Analytics {
   }
 
   private handleVisibility = (): void => {
-    if (!this.shouldTrackEvent(EventTypes.visibility)) return;
+    if (!this.shouldTrackEvent(EventTypesEnum.visibility)) return;
 
     const visibilityData: VisibilityData = {
       visibility_state: document.visibilityState as VisibilityState,
@@ -403,7 +403,7 @@ class Analytics {
       },
     };
 
-    this.queueEvent(EventTypes.visibility, visibilityData);
+    this.queueEvent(EventTypesEnum.visibility, visibilityData);
   };
 
   private setupResourceTracking(): void {
@@ -424,7 +424,7 @@ class Analytics {
             priority: "auto",
           };
 
-          this.queueEvent(EventTypes.resource, resourceData);
+          this.queueEvent(EventTypesEnum.resource, resourceData);
           this.resourceTimings.add(entry.name);
         }
       }
@@ -442,7 +442,7 @@ class Analytics {
   }
 
   private handleTabEvent(action: string): void {
-    if (!this.shouldTrackEvent(EventTypes.tab)) return;
+    if (!this.shouldTrackEvent(EventTypesEnum.tab)) return;
 
     const tabData: TabData = {
       tab_id: crypto.randomUUID(),
@@ -450,12 +450,12 @@ class Analytics {
       tab_url: window.location.href,
     };
 
-    this.queueEvent(EventTypes.tab, tabData);
+    this.queueEvent(EventTypesEnum.tab, tabData);
   }
 
   private setupLocationTracking(): void {
     const handleLocationChange = (): void => {
-      if (!this.shouldTrackEvent(EventTypes.location)) return;
+      if (!this.shouldTrackEvent(EventTypesEnum.location)) return;
 
       const locationData: LocationData = {
         latitude: 0,
@@ -467,7 +467,7 @@ class Analytics {
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       };
 
-      this.queueEvent(EventTypes.location, locationData);
+      this.queueEvent(EventTypesEnum.location, locationData);
     };
 
     window.addEventListener("popstate", handleLocationChange);
@@ -497,7 +497,7 @@ class Analytics {
     let lastInteractionType = "none"; // Track the type of interaction
 
     const handleUserActivity = (event: Event): void => {
-      if (!this.shouldTrackEvent(EventTypes.idle)) return;
+      if (!this.shouldTrackEvent(EventTypesEnum.idle)) return;
 
       const currentTime = performance.now();
       const idleTime = currentTime - this.lastIdleTime;
@@ -510,7 +510,7 @@ class Analytics {
           is_idle: true,
         };
 
-        this.queueEvent(EventTypes.idle, idleData);
+        this.queueEvent(EventTypesEnum.idle, idleData);
       }
 
       this.lastIdleTime = currentTime;
@@ -522,7 +522,7 @@ class Analytics {
   }
 
   private handleStorage = (event: StorageEvent): void => {
-    if (!this.shouldTrackEvent(EventTypes.storage)) return;
+    if (!this.shouldTrackEvent(EventTypesEnum.storage)) return;
 
     const storageData: StorageData = {
       storage_type: event.storageArea === localStorage ? "local" : "session",
@@ -530,7 +530,7 @@ class Analytics {
       value: event.newValue || "",
     };
 
-    this.queueEvent(EventTypes.storage, storageData);
+    this.queueEvent(EventTypesEnum.storage, storageData);
   };
 
   private handleScroll = (): void => {
@@ -539,25 +539,25 @@ class Analytics {
   };
 
   public logConversion(data: Partial<ConversionData>): void {
-    if (!this.shouldTrackEvent(EventTypes.conversion)) return;
+    if (!this.shouldTrackEvent(EventTypesEnum.conversion)) return;
 
-    this.queueEvent(EventTypes.conversion, {
+    this.queueEvent(EventTypesEnum.conversion, {
       ...data,
       timestamp: new Date().toISOString(),
     } as ConversionData);
   }
 
   public logError(error: Error): void {
-    if (!this.shouldTrackEvent(EventTypes.error)) return;
+    if (!this.shouldTrackEvent(EventTypesEnum.error)) return;
 
     const errorData: ErrorData = {
       error_type: error.name,
       message: error.message,
-      stack_trace: error.stack || null,
+      stack_trace: error.stack || "",
       component: "unknown",
     };
 
-    this.queueEvent(EventTypes.error, errorData);
+    this.queueEvent(EventTypesEnum.error, errorData);
   }
 
   private shouldTrackEvent(type: EventTypes): boolean {
@@ -636,7 +636,7 @@ class Analytics {
   }
 
   private handleClick = (event: MouseEvent): void => {
-    if (!this.shouldTrackEvent(EventTypes.click)) return;
+    if (!this.shouldTrackEvent(EventTypesEnum.click)) return;
 
     const target = event.target as Element;
     if (!target || !this.shouldTrackElement(target)) return;
@@ -688,7 +688,7 @@ class Analytics {
       },
     };
 
-    this.queueEvent(EventTypes.click, clickData);
+    this.queueEvent(EventTypesEnum.click, clickData);
   };
 
   private getElementPath(element: Element): string {
@@ -865,7 +865,7 @@ class Analytics {
 
     const handleScroll = () => {
       // First check if we should track scroll events
-      if (!this.shouldTrackEvent(EventTypes.scroll)) return;
+      if (!this.shouldTrackEvent(EventTypesEnum.scroll)) return;
 
       const now = Date.now();
       const currentY = window.scrollY;
@@ -887,7 +887,7 @@ class Analytics {
           ),
         };
 
-        this.queueEvent(EventTypes.scroll, scrollData);
+        this.queueEvent(EventTypesEnum.scroll, scrollData);
         lastScrollY = currentY;
         lastScrollTime = now;
       }
@@ -899,7 +899,7 @@ class Analytics {
 
       scrollTimeout = window.setTimeout(() => {
         // Check again in case settings changed during scroll
-        if (!this.shouldTrackEvent(EventTypes.scroll)) return;
+        if (!this.shouldTrackEvent(EventTypesEnum.scroll)) return;
 
         // Only send final position if it's different from last tracked position
         if (Math.abs(window.scrollY - lastScrollY) >= MIN_SCROLL_DISTANCE) {
@@ -914,7 +914,7 @@ class Analytics {
                 100
             ),
           };
-          this.queueEvent(EventTypes.scroll, finalScrollData);
+          this.queueEvent(EventTypesEnum.scroll, finalScrollData);
           lastScrollY = window.scrollY;
         }
       }, SCROLL_DEBOUNCE);
@@ -929,7 +929,7 @@ class Analytics {
     document.addEventListener(
       "submit",
       (e: Event) => {
-        if (!this.shouldTrackEvent(EventTypes.form)) return;
+        if (!this.shouldTrackEvent(EventTypesEnum.form)) return;
 
         const form = e.target as HTMLFormElement;
         if (!this.shouldTrackElement(form)) return;
@@ -957,7 +957,7 @@ class Analytics {
           }
         });
 
-        this.queueEvent(EventTypes.form, {
+        this.queueEvent(EventTypesEnum.form, {
           form_id: form.id || this.getElementPath(form),
           form_name: form.getAttribute("name") || form.id || "unnamed-form",
           form_action: form.action,
@@ -975,9 +975,9 @@ class Analytics {
   private setupErrorTracking(): void {
     // Global error handling
     window.addEventListener("error", (event: ErrorEvent) => {
-      if (!this.shouldTrackEvent(EventTypes.error)) return;
+      if (!this.shouldTrackEvent(EventTypesEnum.error)) return;
 
-      this.queueEvent(EventTypes.error, {
+      this.queueEvent(EventTypesEnum.error, {
         error_type: event.error?.name || "Unknown",
         message: event.error?.message || event.message,
         stack_trace: event.error?.stack,
@@ -992,9 +992,9 @@ class Analytics {
     window.addEventListener(
       "unhandledrejection",
       (event: PromiseRejectionEvent) => {
-        if (!this.shouldTrackEvent(EventTypes.error)) return;
+        if (!this.shouldTrackEvent(EventTypesEnum.error)) return;
 
-        this.queueEvent(EventTypes.error, {
+        this.queueEvent(EventTypesEnum.error, {
           error_type: "UnhandledPromiseRejection",
           message: event.reason?.message || String(event.reason),
           stack_trace: event.reason?.stack,
@@ -1009,7 +1009,7 @@ class Analytics {
     document.addEventListener(
       "click",
       (event: MouseEvent) => {
-        if (!this.shouldTrackEvent(EventTypes.conversion)) return;
+        if (!this.shouldTrackEvent(EventTypesEnum.conversion)) return;
 
         const target = event.target as Element;
         if (!target || !this.shouldTrackElement(target)) return;
@@ -1019,7 +1019,7 @@ class Analytics {
 
         try {
           const conversion = JSON.parse(conversionData);
-          this.queueEvent(EventTypes.conversion, {
+          this.queueEvent(EventTypesEnum.conversion, {
             type: conversion.type || "click",
             value: conversion.value,
             currency: conversion.currency || "USD",
@@ -1043,7 +1043,7 @@ class Analytics {
         entries.forEach((entry) => {
           if (entry.entryType === "navigation") {
             const navEntry = entry as PerformanceNavigationTiming;
-            this.queueEvent(EventTypes.performance, {
+            this.queueEvent(EventTypesEnum.performance, {
               metric_name: "navigation",
               value: navEntry.loadEventEnd - navEntry.startTime,
               navigation_type: "navigate",
@@ -1057,7 +1057,7 @@ class Analytics {
       const lcpObserver = new PerformanceObserver((list) => {
         const entries = list.getEntries();
         const lastEntry = entries[entries.length - 1];
-        this.queueEvent(EventTypes.performance, {
+        this.queueEvent(EventTypesEnum.performance, {
           metric_name: "lcp",
           value: lastEntry.startTime,
           navigation_type: "navigate",
@@ -1069,7 +1069,7 @@ class Analytics {
       const fidObserver = new PerformanceObserver((list) => {
         const entries = list.getEntries();
         entries.forEach((entry) => {
-          this.queueEvent(EventTypes.performance, {
+          this.queueEvent(EventTypesEnum.performance, {
             metric_name: "fid",
             value: entry.duration,
             navigation_type: "navigate",
@@ -1107,7 +1107,7 @@ class Analytics {
   }
 
   private handleMediaEvent = (event: Event): void => {
-    if (!this.shouldTrackEvent(EventTypes.media)) return;
+    if (!this.shouldTrackEvent(EventTypesEnum.media)) return;
 
     const media = event.target as HTMLMediaElement;
     if (!media || !this.shouldTrackElement(media)) return;
@@ -1118,7 +1118,7 @@ class Analytics {
       if (progress % 10 !== 0) return;
     }
 
-    this.queueEvent(EventTypes.media, {
+    this.queueEvent(EventTypesEnum.media, {
       media_type: media instanceof HTMLVideoElement ? "video" : "audio",
       action: event.type,
       media_url: media.currentSrc,
@@ -1138,6 +1138,11 @@ class Analytics {
 
   private transformQueuedEvents(events: QueuedEvent[]): AnalyticsEventUnion[] {
     return events.map((event) => {
+      // Get current URL and domain with fallbacks
+      const url = window.location.href || "about:blank";
+      const domain = window.location.hostname || "localhost";
+      const referrer = document.referrer || window.location.origin || "direct";
+
       const baseEvent = {
         event_id: event.id,
         globe_id: this.sessionId,
@@ -1146,9 +1151,12 @@ class Analytics {
         client_timestamp: new Date(event.timestamp).toISOString(),
         event_type: event.event_type,
         data: event.data,
+        url,
+        domain,
+        referrer,
       };
 
-      if (event.event_type === EventTypes.custom) {
+      if (event.event_type === EventTypesEnum.custom) {
         return {
           ...baseEvent,
           name: (event.data as { name: string }).name,
@@ -1161,7 +1169,7 @@ class Analytics {
 
   // Update performance tracking
   private handlePerformanceEntry = (entry: PerformanceEntry): void => {
-    if (!this.shouldTrackEvent(EventTypes.performance)) return;
+    if (!this.shouldTrackEvent(EventTypesEnum.performance)) return;
 
     const performanceData = {
       metric_name: entry.entryType,
@@ -1171,7 +1179,7 @@ class Analytics {
         (navigator as any).connection?.effectiveType || "unknown",
     };
 
-    this.queueEvent(EventTypes.performance, performanceData);
+    this.queueEvent(EventTypesEnum.performance, performanceData);
   };
 }
 

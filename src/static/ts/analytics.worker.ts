@@ -1,13 +1,11 @@
 // analytics.worker.ts
 import {
-  AnalyticsEventUnion,
-  AnalyticsBatch,
   EventTypes,
-  QueuedEvent,
   BrowserInfo,
   DeviceInfo,
   NetworkInfo,
-} from "./types/events";
+} from "./types/pydantic_types";
+import { AnalyticsEventUnion, EventTypesEnum } from "./types/custom_types";
 
 // Worker configuration
 const CONFIG = {
@@ -100,11 +98,6 @@ async function processBatch(
 ): Promise<void> {
   const { events, sessionId, device, browser, network } = message;
 
-  console.log(
-    "[analytics.worker | processBatch] Batch received:",
-    JSON.stringify(message, null, 2)
-  );
-
   try {
     const validatedEvents = events
       .map((event) => {
@@ -140,14 +133,31 @@ function validateEvent(
   sessionId: string
 ): AnalyticsEventUnion | null {
   try {
-    const eventType = event.event_type.toLowerCase() as EventTypes;
-
-    // Create the base event with event_id
-    if (!validateEventData(eventType, event.data)) {
+    // Add check for visibility events
+    if (event.event_type.toLowerCase() === EventTypesEnum.visibility) {
+      console.warn(
+        "Visibility events cannot be processed in Web Worker context"
+      );
       return null;
     }
 
-    return event as AnalyticsEventUnion;
+    // Add missing required fields
+    const baseEvent = event;
+
+    const eventType = baseEvent.event_type.toLowerCase() as EventTypes;
+
+    // Ensure required base fields are present
+    if (!baseEvent.url || !baseEvent.domain) {
+      console.error("Missing required fields url/domain:", baseEvent);
+      return null;
+    }
+
+    // Create the base event with event_id
+    if (!validateEventData(eventType, baseEvent.data)) {
+      return null;
+    }
+
+    return baseEvent as AnalyticsEventUnion;
   } catch (error) {
     console.error("Event validation error:", error);
     return null;
@@ -156,7 +166,7 @@ function validateEvent(
 
 function sanitizeEventData(type: EventTypes, data: any): any {
   switch (type) {
-    case EventTypes.performance:
+    case EventTypesEnum.performance:
       return {
         metric_name: data.metric_name,
         value: data.value,
@@ -164,7 +174,7 @@ function sanitizeEventData(type: EventTypes, data: any): any {
         effective_connection_type: data.effective_connection_type || "unknown",
       };
 
-    case EventTypes.resource:
+    case EventTypesEnum.resource:
       return {
         resource_type: data.resource_type,
         url: data.url,
@@ -182,21 +192,21 @@ function sanitizeEventData(type: EventTypes, data: any): any {
 }
 
 const requiredFields: Record<EventTypes, string[]> = {
-  [EventTypes.pageview]: ["url", "title"],
-  [EventTypes.click]: ["element_path", "x_pos", "y_pos"],
-  [EventTypes.scroll]: ["depth", "direction"],
-  [EventTypes.media]: ["media_type", "action"],
-  [EventTypes.form]: ["form_id", "action"],
-  [EventTypes.conversion]: ["conversion_type", "value"],
-  [EventTypes.error]: ["error_type", "message"],
-  [EventTypes.performance]: ["metric_name", "value"],
-  [EventTypes.visibility]: ["visibility_state", "visibility_ratio"],
-  [EventTypes.location]: ["latitude", "longitude"],
-  [EventTypes.tab]: ["tab_id"],
-  [EventTypes.storage]: ["storage_type", "key"],
-  [EventTypes.resource]: ["resource_type", "url"],
-  [EventTypes.idle]: ["idle_time"],
-  [EventTypes.custom]: ["name"],
+  [EventTypesEnum.pageview]: ["url", "title"],
+  [EventTypesEnum.click]: ["element_path", "x_pos", "y_pos"],
+  [EventTypesEnum.scroll]: ["depth", "direction"],
+  [EventTypesEnum.media]: ["media_type", "action"],
+  [EventTypesEnum.form]: ["form_id", "action"],
+  [EventTypesEnum.conversion]: ["conversion_type", "value"],
+  [EventTypesEnum.error]: ["error_type", "message"],
+  [EventTypesEnum.performance]: ["metric_name", "value"],
+  [EventTypesEnum.visibility]: ["visibility_state", "visibility_ratio"],
+  [EventTypesEnum.location]: ["latitude", "longitude"],
+  [EventTypesEnum.tab]: ["tab_id"],
+  [EventTypesEnum.storage]: ["storage_type", "key"],
+  [EventTypesEnum.resource]: ["resource_type", "url"],
+  [EventTypesEnum.idle]: ["idle_time"],
+  [EventTypesEnum.custom]: ["name"],
 };
 // Validate event data based on type
 function validateEventData(type: EventTypes, data: unknown): boolean {
@@ -218,6 +228,8 @@ async function sendBatchToAPI(
   },
   attempt = 1
 ): Promise<boolean> {
+  // console.log("Sending batch to API:", JSON.stringify(batch.events, null, 2));
+
   try {
     const response = await fetch(CONFIG.API_ENDPOINT, {
       method: "POST",
@@ -234,7 +246,8 @@ async function sendBatchToAPI(
 
     return true;
   } catch (error) {
-    if (attempt < CONFIG.MAX_RETRY_ATTEMPTS) {
+    // if (attempt < CONFIG.MAX_RETRY_ATTEMPTS) {
+    if (attempt < 1) {
       await new Promise((resolve) =>
         setTimeout(resolve, CONFIG.RETRY_DELAY_MS * attempt)
       );
