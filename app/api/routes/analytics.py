@@ -10,6 +10,7 @@ from fastapi import (
     HTTPException,
     Response,
     status,
+    Request,
 )
 
 # Third-party imports
@@ -39,11 +40,14 @@ analytics_router = APIRouter(tags=["analytics"])
     },
 )
 async def process_batch(
+    request: Request,
     batch: AnalyticsBatch = Body(...),
     db: AsyncIOMotorDatabase = Depends(deps.get_database),
     response: Response = Response,
 ) -> AnalyticsBatchResponse:
     try:
+        logger.debug(f"Received batch: {batch.model_dump_json(indent=2)}")
+
         if not batch.events:
             logger.warning("Received empty batch")
             raise HTTPException(
@@ -51,29 +55,22 @@ async def process_batch(
                 detail="Batch must contain events",
             )
 
-        # Log incoming batch details
-        logger.debug(
-            f"Received batch with {len(batch.events)} events"
-        )
-
         # Convert events to dict and store in MongoDB
         events = [event.model_dump() for event in batch.events]
         result = await db.events.insert_many(events)
 
-        logger.info(f"Successfully sotred batch {str(result.inserted_ids)}")
+        logger.info(f"Successfully stored batch {str(result.inserted_ids)}")
 
         response.status_code = status.HTTP_201_CREATED
         return AnalyticsBatchResponse(success=True)
 
     except ValidationError as e:
-        logger.error(f"Error saving batch {str(e)}")
-
+        logger.error(f"Validation error: {e.errors()}")
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=e.errors()
         )
     except Exception as e:
-        logger.error(f"Error saving batch {str(e)}")
-
+        logger.error(f"Error saving batch: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred processing the analytics batch",

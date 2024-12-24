@@ -74,8 +74,6 @@ async function initializeDB(): Promise<void> {
 
 // Main message handler
 self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
-  console.log("Received message:", event.data);
-
   try {
     await initializeDB();
 
@@ -100,40 +98,36 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
 async function processBatch(
   message: Omit<WorkerMessage, "type">
 ): Promise<void> {
-  const { events, sessionId, deviceInfo, browserInfo, networkInfo, timestamp } =
-    message;
+  const { events, sessionId, deviceInfo, browserInfo, networkInfo } = message;
 
   try {
-    // Validate and transform events
     const validatedEvents = events
-      .map((event) => validateAndTransformEvent(event, sessionId))
+      .map((event) => {
+        const transformed = validateAndTransformEvent(event, sessionId);
+        if (!transformed) {
+          console.error("Failed to validate event:", event);
+        }
+        return transformed;
+      })
       .filter((event): event is AnalyticsEventUnion => event !== null);
 
     if (validatedEvents.length === 0) {
       throw new Error("No valid events in batch");
     }
 
-    // Create batch payload
-    const batch: AnalyticsBatch = {
+    // Create the batch with all required fields
+    const batch = {
       events: validatedEvents,
-      browser: browserInfo,
-      device: deviceInfo,
-      network: networkInfo,
-      timestamp: new Date(timestamp).toISOString(),
-      sessionId,
+      browser: browserInfo, // Include browser info
+      device: deviceInfo, // Include device info
+      network: networkInfo, // Include network info
     };
 
-    // Attempt to send batch
-    const success = await sendBatchToAPI(batch);
-
-    self.postMessage({
-      success,
-      metadata: {
-        eventCount: validatedEvents.length,
-        timestamp: Date.now(),
-        processedAt: Date.now(),
-      },
-    });
+    console.log(
+      "Debug - Full batch structure:",
+      JSON.stringify(batch, null, 2)
+    );
+    await sendBatchToAPI(batch);
   } catch (error) {
     await storeBatchForRetry(message);
     throw error;
@@ -146,61 +140,79 @@ function validateAndTransformEvent(
   sessionId: string
 ): AnalyticsEventUnion | null {
   try {
-    console.log("Validating event:", event);
+    const eventType = event.event_type.toLowerCase() as EventTypes;
 
-    if (
-      !event.event_type ||
-      !Object.values(EventTypes).includes(event.event_type)
-    ) {
-      console.warn(`Invalid event type: ${event.event_type}`);
-      return null;
-    }
-
-    const baseEvent = {
+    // Create the base event with event_id
+    const transformedEvent = {
+      event_id: event.id || crypto.randomUUID(),
       globe_id: sessionId,
-      event_id: event.id,
-      timestamp: new Date().toISOString(),
       session_id: sessionId,
+      timestamp: new Date().toISOString(),
       client_timestamp: new Date(event.timestamp).toISOString(),
-      event_type: event.event_type,
-      data: event.data,
+      event_type: eventType,
+      data: sanitizeEventData(eventType, event.data),
     };
 
-    // Additional validation based on event type
-    if (!validateEventData(event.event_type, event.data)) {
+    if (!validateEventData(eventType, transformedEvent.data)) {
       return null;
     }
 
-    return baseEvent as AnalyticsEventUnion;
+    return transformedEvent as AnalyticsEventUnion;
   } catch (error) {
     console.error("Event validation error:", error);
     return null;
   }
 }
 
+function sanitizeEventData(type: EventTypes, data: any): any {
+  switch (type) {
+    case EventTypes.performance:
+      return {
+        metric_name: data.metric_name,
+        value: data.value,
+        navigation_type: data.navigation_type || "navigate",
+        effective_connection_type: data.effective_connection_type || "unknown",
+      };
+
+    case EventTypes.resource:
+      return {
+        resource_type: data.resource_type,
+        url: data.url,
+        duration: Math.max(0, data.duration),
+        transfer_size: data.transfer_size || 0,
+        compression_ratio: data.compression_ratio || null,
+        cache_hit: data.cache_hit || false,
+        priority: data.priority || "auto",
+      };
+
+    // Add other cases as needed
+    default:
+      return data;
+  }
+}
+
+const requiredFields: Record<EventTypes, string[]> = {
+  [EventTypes.pageview]: ["url", "title"],
+  [EventTypes.click]: ["element_path", "x_pos", "y_pos"],
+  [EventTypes.scroll]: ["depth", "direction"],
+  [EventTypes.media]: ["media_type", "action"],
+  [EventTypes.form]: ["form_id", "action"],
+  [EventTypes.conversion]: ["conversion_type", "value"],
+  [EventTypes.error]: ["error_type", "message"],
+  [EventTypes.performance]: ["metric_name", "value"],
+  [EventTypes.visibility]: ["visibility_state", "visibility_ratio"],
+  [EventTypes.location]: ["latitude", "longitude"],
+  [EventTypes.tab]: ["tab_id"],
+  [EventTypes.storage]: ["storage_type", "key"],
+  [EventTypes.resource]: ["resource_type", "url"],
+  [EventTypes.idle]: ["idle_time"],
+  [EventTypes.custom]: ["name"],
+};
 // Validate event data based on type
 function validateEventData(type: EventTypes, data: unknown): boolean {
   if (!data || typeof data !== "object") {
     return false;
   }
-
-  const requiredFields: Record<EventTypes, string[]> = {
-    [EventTypes.PAGEVIEW]: ["url", "title"],
-    [EventTypes.CLICK]: ["element_path", "x_pos", "y_pos"],
-    [EventTypes.SCROLL]: ["depth", "direction"],
-    [EventTypes.MEDIA]: ["media_type", "action"],
-    [EventTypes.FORM]: ["form_id", "action"],
-    [EventTypes.CONVERSION]: ["conversion_type", "value"],
-    [EventTypes.ERROR]: ["error_type", "message"],
-    [EventTypes.PERFORMANCE]: ["metric_name", "value"],
-    [EventTypes.VISIBILITY]: ["visibility_state"],
-    [EventTypes.LOCATION]: ["latitude", "longitude"],
-    [EventTypes.TAB]: ["tab_id"],
-    [EventTypes.STORAGE]: ["storage_type", "key"],
-    [EventTypes.RESOURCE]: ["resource_type", "url"],
-    [EventTypes.IDLE]: ["idle_time"],
-    [EventTypes.CUSTOM]: ["name"],
-  };
 
   const fields = requiredFields[type];
   return fields.every((field) => field in (data as Record<string, unknown>));
@@ -208,7 +220,12 @@ function validateEventData(type: EventTypes, data: unknown): boolean {
 
 // Send batch to API with retry logic
 async function sendBatchToAPI(
-  batch: AnalyticsBatch,
+  batch: {
+    events: AnalyticsEventUnion[];
+    browser: BrowserInfo;
+    device: DeviceInfo;
+    network: NetworkInfo;
+  },
   attempt = 1
 ): Promise<boolean> {
   try {
@@ -222,6 +239,8 @@ async function sendBatchToAPI(
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`API Error (${response.status}):`, errorText);
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 

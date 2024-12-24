@@ -5,9 +5,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, ValidationError
 
-from logging import getLogger
+from logging import getLogger, StreamHandler
+import sys
 
 logger = getLogger(__name__)
+logger.setLevel("DEBUG")
+handler = StreamHandler(sys.stdout)
+handler.setLevel("DEBUG")
+logger.addHandler(handler)
 
 
 ## EVENT TYPES
@@ -619,19 +624,28 @@ class AnalyticsBatch(BaseModel):
     def validate_events(cls, events):
         validated_events = []
         for event in events:
+            logger.debug(f"Processing event ID: {event.get('event_id')}")
             try:
                 if isinstance(event, dict):
                     event_type = event.get("event_type")
+                    logger.debug(f"Event type: {event_type}")
                     if event_type in EVENT_MODELS:
                         model = EVENT_MODELS[EventTypes(event_type)]
-                        validated_event = model(**event)
-                        validated_events.append(validated_event)
-                    elif event_type == EventTypes.CUSTOM.value:
-                        validated_event = CustomEvent(**event)
-                        validated_events.append(validated_event)
-            except (ValueError, ValidationError):
-                logger.info(f"Invalid event: {event}")
-                continue  # Skip invalid events
+                        try:
+                            validated_event = model(**event)
+                            validated_events.append(validated_event)
+                            logger.debug(f"Successfully validated event: {event_type}")
+                        except ValidationError as e:
+                            # Add more detailed error logging
+                            logger.error(f"Validation error for {event_type}: {e.errors()}")
+                            logger.error(f"Event data: {event}")
+                    else:
+                        logger.error(f"Unknown event type: {event_type}")
+                else:
+                    logger.error(f"Invalid event format: {event}")
+            except Exception as e:
+                logger.error(f"Error processing event: {e}", exc_info=True)
+                continue
         return validated_events
 
 

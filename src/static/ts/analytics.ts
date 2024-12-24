@@ -112,6 +112,8 @@ class Analytics {
   private readonly sessionId = crypto.randomUUID();
   private currentUserId: string | null = null;
 
+  private readonly batchSize = 50;
+
   // Optimized storage
   private readonly eventQueue = new RingBuffer<QueuedEvent>(1000);
   private readonly idCache: Int32Array;
@@ -254,8 +256,6 @@ class Analytics {
         this.flushEvents();
       }
     });
-
-    console.log("Analytics initialization complete"); // Debug log
   }
 
   private setupIntersectionTracking(): void {
@@ -263,7 +263,7 @@ class Analytics {
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (!this.shouldTrackEvent(EventTypes.VISIBILITY)) return;
+          if (!this.shouldTrackEvent(EventTypes.visibility)) return;
 
           const element = entry.target;
           const now = performance.now();
@@ -301,7 +301,7 @@ class Analytics {
             },
           };
 
-          this.queueEvent(EventTypes.VISIBILITY, visibilityData);
+          this.queueEvent(EventTypes.visibility, visibilityData);
         });
       },
       {
@@ -404,7 +404,7 @@ class Analytics {
     // Track elements that:
     if (element.hasAttribute("data-track-visibility")) return true;
     if (element.hasAttribute("data-analytics-id")) return true;
-    if (element.matches("button, a, form, input, select, textarea"))
+    if (element.matches("button, a, form, input, select, textarea, div"))
       return true;
     if (element.matches("article, section, main, header, footer")) return true;
     if (element.matches("h1, h2, img, video")) return true;
@@ -417,39 +417,49 @@ class Analytics {
   }
 
   private handleVisibility = (): void => {
-    if (!this.shouldTrackEvent(EventTypes.VISIBILITY)) return;
+    if (!this.shouldTrackEvent(EventTypes.visibility)) return;
 
     const visibilityData: VisibilityData = {
       visibility_state: document.visibilityState as VisibilityState,
       visibility_ratio: 1,
+      element_id: "document",
+      element_type: "document",
+      time_visible: performance.now() - this.lastIdleTime,
+      viewport_area: window.innerWidth * window.innerHeight,
+      intersection_rect: {
+        top: 0,
+        left: 0,
+        bottom: window.innerHeight,
+        right: window.innerWidth,
+      },
     };
-    this.queueEvent(EventTypes.VISIBILITY, visibilityData);
+
+    this.queueEvent(EventTypes.visibility, visibilityData);
   };
 
   private setupResourceTracking(): void {
     if (!("PerformanceObserver" in window)) return;
 
-    const observer = new PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) {
-        if (this.resourceTimings.has(entry.name)) continue;
+    const observer = new PerformanceObserver(
+      (list: PerformanceObserverEntryList) => {
+        for (const entry of list.getEntries()) {
+          if (this.resourceTimings.has(entry.name)) continue;
+          const resourceData: ResourceData = {
+            resource_type: (entry as PerformanceResourceTiming).initiatorType,
+            url: entry.name,
+            duration: Math.max(0, entry.duration),
+            transfer_size:
+              (entry as PerformanceResourceTiming).transferSize || 0,
+            compression_ratio: null,
+            cache_hit: (entry as PerformanceResourceTiming).transferSize === 0,
+            priority: "auto",
+          };
 
-        const resourceData: ResourceData = {
-          resource_type: entry.entryType,
-          url: entry.name,
-          duration: entry.duration,
-          transfer_size:
-            "transferSize" in entry
-              ? (entry as PerformanceResourceTiming).transferSize
-              : 0,
-          compression_ratio: null,
-          cache_hit: false,
-          priority: "auto",
-        };
-
-        this.queueEvent(EventTypes.RESOURCE, resourceData);
-        this.resourceTimings.add(entry.name);
+          this.queueEvent(EventTypes.resource, resourceData);
+          this.resourceTimings.add(entry.name);
+        }
       }
-    });
+    );
 
     observer.observe({ entryTypes: ["resource"] });
   }
@@ -463,7 +473,7 @@ class Analytics {
   }
 
   private handleTabEvent(action: string): void {
-    if (!this.shouldTrackEvent(EventTypes.TAB)) return;
+    if (!this.shouldTrackEvent(EventTypes.tab)) return;
 
     const tabData: TabData = {
       tab_id: crypto.randomUUID(),
@@ -471,12 +481,12 @@ class Analytics {
       tab_url: window.location.href,
     };
 
-    this.queueEvent(EventTypes.TAB, tabData);
+    this.queueEvent(EventTypes.tab, tabData);
   }
 
   private setupLocationTracking(): void {
     const handleLocationChange = (): void => {
-      if (!this.shouldTrackEvent(EventTypes.LOCATION)) return;
+      if (!this.shouldTrackEvent(EventTypes.location)) return;
 
       const locationData: LocationData = {
         latitude: 0,
@@ -488,7 +498,7 @@ class Analytics {
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       };
 
-      this.queueEvent(EventTypes.LOCATION, locationData);
+      this.queueEvent(EventTypes.location, locationData);
     };
 
     window.addEventListener("popstate", handleLocationChange);
@@ -515,21 +525,23 @@ class Analytics {
       "scroll",
       "touchstart",
     ];
+    let lastInteractionType = "none"; // Track the type of interaction
 
-    const handleUserActivity = (): void => {
-      if (!this.shouldTrackEvent(EventTypes.IDLE)) return;
+    const handleUserActivity = (event: Event): void => {
+      if (!this.shouldTrackEvent(EventTypes.idle)) return;
 
       const currentTime = performance.now();
       const idleTime = currentTime - this.lastIdleTime;
+      lastInteractionType = event.type; // Update the interaction type
 
       if (idleTime > 30000) {
         const idleData: IdleData = {
           idle_time: idleTime,
-          last_interaction: new Date().toISOString(),
+          last_interaction: lastInteractionType, // Send the type instead of timestamp
           is_idle: true,
         };
 
-        this.queueEvent(EventTypes.IDLE, idleData);
+        this.queueEvent(EventTypes.idle, idleData);
       }
 
       this.lastIdleTime = currentTime;
@@ -541,7 +553,7 @@ class Analytics {
   }
 
   private handleStorage = (event: StorageEvent): void => {
-    if (!this.shouldTrackEvent(EventTypes.STORAGE)) return;
+    if (!this.shouldTrackEvent(EventTypes.storage)) return;
 
     const storageData: StorageData = {
       storage_type: event.storageArea === localStorage ? "local" : "session",
@@ -549,7 +561,7 @@ class Analytics {
       value: event.newValue || "",
     };
 
-    this.queueEvent(EventTypes.STORAGE, storageData);
+    this.queueEvent(EventTypes.storage, storageData);
   };
 
   private handleScroll = (): void => {
@@ -558,16 +570,16 @@ class Analytics {
   };
 
   public logConversion(data: Partial<ConversionData>): void {
-    if (!this.shouldTrackEvent(EventTypes.CONVERSION)) return;
+    if (!this.shouldTrackEvent(EventTypes.conversion)) return;
 
-    this.queueEvent(EventTypes.CONVERSION, {
+    this.queueEvent(EventTypes.conversion, {
       ...data,
       timestamp: new Date().toISOString(),
     } as ConversionData);
   }
 
   public logError(error: Error): void {
-    if (!this.shouldTrackEvent(EventTypes.ERROR)) return;
+    if (!this.shouldTrackEvent(EventTypes.error)) return;
 
     const errorData: ErrorData = {
       error_type: error.name,
@@ -576,7 +588,7 @@ class Analytics {
       component: "unknown",
     };
 
-    this.queueEvent(EventTypes.ERROR, errorData);
+    this.queueEvent(EventTypes.error, errorData);
   }
 
   private shouldTrackEvent(type: EventTypes): boolean {
@@ -589,60 +601,43 @@ class Analytics {
   private queueEvent(type: EventTypes, data: unknown): void {
     const event: QueuedEvent = {
       id: crypto.randomUUID(),
-      event_type: type,
-      data: {
-        ...(data as object),
-        event_id: crypto.randomUUID(),
-        globe_id: this.sessionId,
-        session_id: this.sessionId,
-        timestamp: new Date().toISOString(),
-      },
-      timestamp: performance.now(),
+      event_type: type.toLowerCase() as EventTypes,
+      data,
+      timestamp: Date.now(),
     };
 
     this.eventQueue.push(event);
-
-    if (this.eventQueue.size >= 50) {
-      requestAnimationFrame(() => this.flushEvents());
+    if (this.eventQueue.size >= this.batchSize) {
+      this.flushEvents();
     }
   }
 
   private async flushEvents(): Promise<void> {
     const events = this.eventQueue.drain();
-    if (!events.length) return;
+    if (!events.length || !this.worker) return;
 
-    const analyticsEvents = this.transformQueuedEvents(events);
-    const compressed = await this.compressEvents(analyticsEvents);
-
-    // Comment out these API calls
-
-    if (document.visibilityState === "hidden") {
-      navigator.sendBeacon(API_URL, compressed);
-      return;
-    }
-
-    try {
-      await fetch(API_URL, {
-        method: "POST",
-        body: compressed,
-        keepalive: true,
-        headers: {
-          "Content-Type": "application/octet-stream",
-        },
-      });
-    } catch {
-      await this.storeForRetry(events);
-    }
+    this.worker.postMessage({
+      type: "PROCESS_BATCH",
+      events, // Send raw events to worker
+      sessionId: this.sessionId,
+      deviceInfo: this.getDeviceInfo(),
+      browserInfo: this.getBrowserInfo(),
+      networkInfo: this.getNetworkInfo(),
+      timestamp: Date.now(),
+    });
   }
 
-  private async compressEvents(
-    events: AnalyticsEventUnion[]
-  ): Promise<Uint8Array> {
+  private async compressEvents(batch: {
+    events: AnalyticsEventUnion[];
+    browser: BrowserInfo;
+    device: DeviceInfo;
+    network: NetworkInfo;
+  }): Promise<Uint8Array> {
     const stream = new CompressionStream("gzip");
     const writer = stream.writable.getWriter();
     const encoder = new TextEncoder();
 
-    await writer.write(encoder.encode(JSON.stringify(events)));
+    await writer.write(encoder.encode(JSON.stringify(batch)));
     await writer.close();
 
     return new Response(stream.readable)
@@ -670,7 +665,7 @@ class Analytics {
   }
 
   private handleClick = (event: MouseEvent): void => {
-    if (!this.shouldTrackEvent(EventTypes.CLICK)) return;
+    if (!this.shouldTrackEvent(EventTypes.click)) return;
 
     const target = event.target as Element;
     if (!target || !this.shouldTrackElement(target)) return;
@@ -722,7 +717,7 @@ class Analytics {
       },
     };
 
-    this.queueEvent(EventTypes.CLICK, clickData);
+    this.queueEvent(EventTypes.click, clickData);
   };
 
   private getElementPath(element: Element): string {
@@ -838,6 +833,19 @@ class Analytics {
     // Implement fallback processing
   };
 
+  private getBrowserInfo(): BrowserInfo {
+    return {
+      user_agent: navigator.userAgent,
+      language: navigator.language,
+      platform: navigator.platform,
+      vendor: navigator.vendor || null,
+      cookies_enabled: navigator.cookieEnabled,
+      do_not_track: navigator.doNotTrack === "1",
+      time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      time_zone_offset: new Date().getTimezoneOffset(),
+    };
+  }
+
   private getDeviceInfo(): DeviceInfo {
     return {
       screen_resolution: {
@@ -848,21 +856,8 @@ class Analytics {
       pixel_ratio: window.devicePixelRatio,
       max_touch_points: navigator.maxTouchPoints,
       memory: (navigator as any).deviceMemory || null,
-      hardware_concurrency: navigator.hardwareConcurrency,
+      hardware_concurrency: navigator.hardwareConcurrency || null,
       device_memory: (navigator as any).deviceMemory || null,
-    };
-  }
-
-  private getBrowserInfo(): BrowserInfo {
-    return {
-      user_agent: navigator.userAgent,
-      language: navigator.language,
-      platform: navigator.platform || "unknown",
-      vendor: navigator.vendor || "unknown",
-      cookies_enabled: navigator.cookieEnabled,
-      do_not_track: navigator.doNotTrack === "1",
-      time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      time_zone_offset: new Date().getTimezoneOffset(),
     };
   }
 
@@ -874,7 +869,7 @@ class Analytics {
       effective_type: connection?.effectiveType || "unknown",
       rtt: connection?.rtt || 0,
       save_data: connection?.saveData || false,
-      anonymize_ip: this.privacySettings.ipAnonymization,
+      anonymize_ip: false,
     };
   }
 
@@ -893,7 +888,7 @@ class Analytics {
 
     const handleScroll = () => {
       // First check if we should track scroll events
-      if (!this.shouldTrackEvent(EventTypes.SCROLL)) return;
+      if (!this.shouldTrackEvent(EventTypes.scroll)) return;
 
       const now = Date.now();
       const currentY = window.scrollY;
@@ -915,7 +910,7 @@ class Analytics {
           ),
         };
 
-        this.queueEvent(EventTypes.SCROLL, scrollData);
+        this.queueEvent(EventTypes.scroll, scrollData);
         lastScrollY = currentY;
         lastScrollTime = now;
       }
@@ -927,7 +922,7 @@ class Analytics {
 
       scrollTimeout = window.setTimeout(() => {
         // Check again in case settings changed during scroll
-        if (!this.shouldTrackEvent(EventTypes.SCROLL)) return;
+        if (!this.shouldTrackEvent(EventTypes.scroll)) return;
 
         // Only send final position if it's different from last tracked position
         if (Math.abs(window.scrollY - lastScrollY) >= MIN_SCROLL_DISTANCE) {
@@ -942,7 +937,7 @@ class Analytics {
                 100
             ),
           };
-          this.queueEvent(EventTypes.SCROLL, finalScrollData);
+          this.queueEvent(EventTypes.scroll, finalScrollData);
           lastScrollY = window.scrollY;
         }
       }, SCROLL_DEBOUNCE);
@@ -957,7 +952,7 @@ class Analytics {
     document.addEventListener(
       "submit",
       (e: Event) => {
-        if (!this.shouldTrackEvent(EventTypes.FORM)) return;
+        if (!this.shouldTrackEvent(EventTypes.form)) return;
 
         const form = e.target as HTMLFormElement;
         if (!this.shouldTrackElement(form)) return;
@@ -985,7 +980,7 @@ class Analytics {
           }
         });
 
-        this.queueEvent(EventTypes.FORM, {
+        this.queueEvent(EventTypes.form, {
           form_id: form.id || this.getElementPath(form),
           form_name: form.getAttribute("name") || form.id || "unnamed-form",
           form_action: form.action,
@@ -1003,9 +998,9 @@ class Analytics {
   private setupErrorTracking(): void {
     // Global error handling
     window.addEventListener("error", (event: ErrorEvent) => {
-      if (!this.shouldTrackEvent(EventTypes.ERROR)) return;
+      if (!this.shouldTrackEvent(EventTypes.error)) return;
 
-      this.queueEvent(EventTypes.ERROR, {
+      this.queueEvent(EventTypes.error, {
         error_type: event.error?.name || "Unknown",
         message: event.error?.message || event.message,
         stack_trace: event.error?.stack,
@@ -1020,9 +1015,9 @@ class Analytics {
     window.addEventListener(
       "unhandledrejection",
       (event: PromiseRejectionEvent) => {
-        if (!this.shouldTrackEvent(EventTypes.ERROR)) return;
+        if (!this.shouldTrackEvent(EventTypes.error)) return;
 
-        this.queueEvent(EventTypes.ERROR, {
+        this.queueEvent(EventTypes.error, {
           error_type: "UnhandledPromiseRejection",
           message: event.reason?.message || String(event.reason),
           stack_trace: event.reason?.stack,
@@ -1037,7 +1032,7 @@ class Analytics {
     document.addEventListener(
       "click",
       (event: MouseEvent) => {
-        if (!this.shouldTrackEvent(EventTypes.CONVERSION)) return;
+        if (!this.shouldTrackEvent(EventTypes.conversion)) return;
 
         const target = event.target as Element;
         if (!target || !this.shouldTrackElement(target)) return;
@@ -1047,7 +1042,7 @@ class Analytics {
 
         try {
           const conversion = JSON.parse(conversionData);
-          this.queueEvent(EventTypes.CONVERSION, {
+          this.queueEvent(EventTypes.conversion, {
             type: conversion.type || "click",
             value: conversion.value,
             currency: conversion.currency || "USD",
@@ -1065,48 +1060,44 @@ class Analytics {
   }
 
   private setupPerformanceTracking(): void {
-    // Performance Observer for key metrics
     if ("PerformanceObserver" in window) {
-      // Track page load metrics
       const pageLoadObserver = new PerformanceObserver((list) => {
         const entries = list.getEntries();
         entries.forEach((entry) => {
           if (entry.entryType === "navigation") {
             const navEntry = entry as PerformanceNavigationTiming;
-            this.queueEvent(EventTypes.PERFORMANCE, {
-              type: "navigation",
-              dns: navEntry.domainLookupEnd - navEntry.domainLookupStart,
-              tcp: navEntry.connectEnd - navEntry.connectStart,
-              ttfb: navEntry.responseStart - navEntry.requestStart,
-              dom_load:
-                navEntry.domContentLoadedEventEnd -
-                navEntry.domContentLoadedEventStart,
-              load: navEntry.loadEventEnd - navEntry.loadEventStart,
-              total: navEntry.loadEventEnd - navEntry.startTime,
+            this.queueEvent(EventTypes.performance, {
+              metric_name: "navigation",
+              value: navEntry.loadEventEnd - navEntry.startTime,
+              navigation_type: "navigate",
+              effective_connection_type:
+                (navigator as any).connection?.effectiveType || "unknown",
             });
           }
         });
       });
 
-      // Track largest contentful paint
       const lcpObserver = new PerformanceObserver((list) => {
         const entries = list.getEntries();
         const lastEntry = entries[entries.length - 1];
-        this.queueEvent(EventTypes.PERFORMANCE, {
-          type: "lcp",
+        this.queueEvent(EventTypes.performance, {
+          metric_name: "lcp",
           value: lastEntry.startTime,
-          element: (lastEntry as any).element?.tagName || "unknown",
+          navigation_type: "navigate",
+          effective_connection_type:
+            (navigator as any).connection?.effectiveType || "unknown",
         });
       });
 
-      // Track first input delay
       const fidObserver = new PerformanceObserver((list) => {
         const entries = list.getEntries();
         entries.forEach((entry) => {
-          this.queueEvent(EventTypes.PERFORMANCE, {
-            type: "fid",
+          this.queueEvent(EventTypes.performance, {
+            metric_name: "fid",
             value: entry.duration,
-            target: (entry as any).target?.tagName || "unknown",
+            navigation_type: "navigate",
+            effective_connection_type:
+              (navigator as any).connection?.effectiveType || "unknown",
           });
         });
       });
@@ -1139,7 +1130,7 @@ class Analytics {
   }
 
   private handleMediaEvent = (event: Event): void => {
-    if (!this.shouldTrackEvent(EventTypes.MEDIA)) return;
+    if (!this.shouldTrackEvent(EventTypes.media)) return;
 
     const media = event.target as HTMLMediaElement;
     if (!media || !this.shouldTrackElement(media)) return;
@@ -1150,7 +1141,7 @@ class Analytics {
       if (progress % 10 !== 0) return;
     }
 
-    this.queueEvent(EventTypes.MEDIA, {
+    this.queueEvent(EventTypes.media, {
       media_type: media instanceof HTMLVideoElement ? "video" : "audio",
       action: event.type,
       media_url: media.currentSrc,
@@ -1169,16 +1160,42 @@ class Analytics {
   };
 
   private transformQueuedEvents(events: QueuedEvent[]): AnalyticsEventUnion[] {
-    return events.map((event) => ({
-      globe_id: this.sessionId,
-      event_id: event.id,
-      timestamp: new Date().toISOString(),
-      session_id: this.sessionId,
-      client_timestamp: new Date(event.timestamp).toISOString(),
-      event_type: event.event_type,
-      data: event.data,
-    })) as AnalyticsEventUnion[];
+    return events.map((event) => {
+      const baseEvent = {
+        event_id: event.id,
+        globe_id: this.sessionId,
+        session_id: this.sessionId,
+        timestamp: new Date().toISOString(),
+        client_timestamp: new Date(event.timestamp).toISOString(),
+        event_type: event.event_type,
+        data: event.data,
+      };
+
+      if (event.event_type === EventTypes.custom) {
+        return {
+          ...baseEvent,
+          name: (event.data as { name: string }).name,
+        };
+      }
+
+      return baseEvent;
+    }) as AnalyticsEventUnion[];
   }
+
+  // Update performance tracking
+  private handlePerformanceEntry = (entry: PerformanceEntry): void => {
+    if (!this.shouldTrackEvent(EventTypes.performance)) return;
+
+    const performanceData = {
+      metric_name: entry.entryType,
+      value: entry.duration || entry.startTime,
+      navigation_type: "navigate",
+      effective_connection_type:
+        (navigator as any).connection?.effectiveType || "unknown",
+    };
+
+    this.queueEvent(EventTypes.performance, performanceData);
+  };
 }
 
 export default Analytics.getInstance();

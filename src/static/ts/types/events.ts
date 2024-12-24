@@ -13,21 +13,21 @@ export type VisibilityState = "hidden" | "visible" | "prerender" | "unloaded";
  * Enumeration of possible analytics event types.
  */
 export enum EventTypes {
-  PAGEVIEW = "pageview",
-  CLICK = "click",
-  SCROLL = "scroll",
-  MEDIA = "media",
-  FORM = "form",
-  CONVERSION = "conversion",
-  ERROR = "error",
-  PERFORMANCE = "performance",
-  VISIBILITY = "visibility",
-  LOCATION = "location",
-  TAB = "tab",
-  STORAGE = "storage",
-  RESOURCE = "resource",
-  IDLE = "idle",
-  CUSTOM = "custom",
+  pageview = "pageview",
+  click = "click",
+  scroll = "scroll",
+  media = "media",
+  form = "form",
+  conversion = "conversion",
+  error = "error",
+  performance = "performance",
+  visibility = "visibility",
+  location = "location",
+  tab = "tab",
+  storage = "storage",
+  resource = "resource",
+  idle = "idle",
+  custom = "custom",
 }
 
 export type AnalyticsEventUnion =
