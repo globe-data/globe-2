@@ -59,10 +59,10 @@ async def process_batch(
         events = [event.model_dump() for event in batch.events]
         result = await db.events.insert_many(events)
 
-        logger.info(f"Successfully stored batch {str(result.inserted_ids)}")
-
         response.status_code = status.HTTP_201_CREATED
-        return AnalyticsBatchResponse(success=True)
+        return AnalyticsBatchResponse(
+            success=True, events_stored=result.inserted_ids
+        )
 
     except ValidationError as e:
         logger.error(f"Validation error: {e.errors()}")

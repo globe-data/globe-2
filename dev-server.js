@@ -29,9 +29,11 @@ async function startDevServer() {
     },
   });
 
+  const serverPort = process.env.PORT || 3000;
+
   const { host, port } = await ctx.serve({
     servedir: ".", // Serve from root directory
-    port: 3000,
+    port: serverPort,
     onRequest: (args) => {
       // Add required security headers for SharedArrayBuffer
       args.responseHeaders = {
@@ -46,6 +48,7 @@ async function startDevServer() {
   console.log(
     `🌎 Development server running at http://${host}:${port}/dist/index.html`
   );
+  console.log("⌛ Waiting for file changes...\n");
 }
 
 startDevServer().catch((err) => {

@@ -2,6 +2,7 @@ const esbuild = require("esbuild");
 const path = require("path");
 
 const isDev = process.env.NODE_ENV === "development";
+const isWatch = process.argv.includes("--watch");
 
 /** @type {import('esbuild').BuildOptions} */
 const baseConfig = {
@@ -28,24 +29,41 @@ const baseConfig = {
   alias: {
     "@src": path.resolve(__dirname, "src"),
   },
+  plugins: [
+    {
+      name: "rebuild-notify",
+      setup(build) {
+        build.onEnd((result) => {
+          const date = new Date().toLocaleTimeString();
+          if (result.errors.length) {
+            console.error(`[${date}] 🔴 Build failed:`);
+            console.error(result.errors);
+          } else {
+            console.log(`[${date}] 🟢 Build completed successfully`);
+            if (result.warnings.length) {
+              console.warn(`[${date}] ⚠️  Warnings:`);
+              console.warn(result.warnings);
+            }
+          }
+        });
+      },
+    },
+  ],
 };
 
-async function build() {
-  try {
-    if (isDev) {
-      // Development: watch mode
-      const context = await esbuild.context(baseConfig);
-      await context.watch();
-      console.log("👀 Watching for changes...");
-    } else {
-      // Production: single build
-      await esbuild.build(baseConfig);
-      console.log("✅ Build complete");
-    }
-  } catch (error) {
-    console.error("❌ Build failed:", error);
-    process.exit(1);
-  }
+if (isWatch) {
+  console.log("🚀 Starting watch mode...");
+  esbuild.context(baseConfig).then((context) => {
+    context.watch();
+    console.log("👀 Watching for changes...");
+  });
+} else {
+  console.log("📦 Building...");
+  esbuild
+    .build(baseConfig)
+    .then(() => console.log("✅ Build complete"))
+    .catch(() => {
+      console.error("❌ Build failed");
+      process.exit(1);
+    });
 }
-
-build();

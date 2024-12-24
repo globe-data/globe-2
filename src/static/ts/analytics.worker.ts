@@ -38,11 +38,11 @@ interface WorkerError {
 
 interface WorkerMessage {
   type: "PROCESS_BATCH" | "RETRY_FAILED";
-  events: QueuedEvent[];
+  events: AnalyticsEventUnion[];
   sessionId: string;
-  deviceInfo: DeviceInfo;
-  browserInfo: BrowserInfo;
-  networkInfo: NetworkInfo;
+  device: DeviceInfo;
+  browser: BrowserInfo;
+  network: NetworkInfo;
   timestamp: number;
 }
 
@@ -98,12 +98,17 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
 async function processBatch(
   message: Omit<WorkerMessage, "type">
 ): Promise<void> {
-  const { events, sessionId, deviceInfo, browserInfo, networkInfo } = message;
+  const { events, sessionId, device, browser, network } = message;
+
+  console.log(
+    "[analytics.worker | processBatch] Batch received:",
+    JSON.stringify(message, null, 2)
+  );
 
   try {
     const validatedEvents = events
       .map((event) => {
-        const transformed = validateAndTransformEvent(event, sessionId);
+        const transformed = validateEvent(event, sessionId);
         if (!transformed) {
           console.error("Failed to validate event:", event);
         }
@@ -118,15 +123,10 @@ async function processBatch(
     // Create the batch with all required fields
     const batch = {
       events: validatedEvents,
-      browser: browserInfo, // Include browser info
-      device: deviceInfo, // Include device info
-      network: networkInfo, // Include network info
+      browser: browser, // Include browser info
+      device: device, // Include device info
+      network: network, // Include network info
     };
-
-    console.log(
-      "Debug - Full batch structure:",
-      JSON.stringify(batch, null, 2)
-    );
     await sendBatchToAPI(batch);
   } catch (error) {
     await storeBatchForRetry(message);
@@ -135,29 +135,19 @@ async function processBatch(
 }
 
 // Validate and transform a single event
-function validateAndTransformEvent(
-  event: QueuedEvent,
+function validateEvent(
+  event: AnalyticsEventUnion,
   sessionId: string
 ): AnalyticsEventUnion | null {
   try {
     const eventType = event.event_type.toLowerCase() as EventTypes;
 
     // Create the base event with event_id
-    const transformedEvent = {
-      event_id: event.id || crypto.randomUUID(),
-      globe_id: sessionId,
-      session_id: sessionId,
-      timestamp: new Date().toISOString(),
-      client_timestamp: new Date(event.timestamp).toISOString(),
-      event_type: eventType,
-      data: sanitizeEventData(eventType, event.data),
-    };
-
-    if (!validateEventData(eventType, transformedEvent.data)) {
+    if (!validateEventData(eventType, event.data)) {
       return null;
     }
 
-    return transformedEvent as AnalyticsEventUnion;
+    return event as AnalyticsEventUnion;
   } catch (error) {
     console.error("Event validation error:", error);
     return null;
@@ -239,8 +229,6 @@ async function sendBatchToAPI(
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`API Error (${response.status}):`, errorText);
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 

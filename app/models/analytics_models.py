@@ -624,17 +624,14 @@ class AnalyticsBatch(BaseModel):
     def validate_events(cls, events):
         validated_events = []
         for event in events:
-            logger.debug(f"Processing event ID: {event.get('event_id')}")
             try:
                 if isinstance(event, dict):
                     event_type = event.get("event_type")
-                    logger.debug(f"Event type: {event_type}")
                     if event_type in EVENT_MODELS:
                         model = EVENT_MODELS[EventTypes(event_type)]
                         try:
                             validated_event = model(**event)
                             validated_events.append(validated_event)
-                            logger.debug(f"Successfully validated event: {event_type}")
                         except ValidationError as e:
                             # Add more detailed error logging
                             logger.error(f"Validation error for {event_type}: {e.errors()}")
@@ -661,6 +658,7 @@ class AnalyticsBatchResponse(BaseModel):
     """Model representing a response to an analytics batch request."""
 
     success: bool
+    events_stored: Optional[List[UUID]]
 
 
 # Add this mapping at the module level

@@ -21,40 +21,9 @@ import {
 } from "./types/events";
 import { openDB } from "idb";
 
-const API_URL = "http://localhost:8000/api/analytics";
-
 /**
  * Optimized Analytics class using modern browser APIs and performance best practices
  */
-
-class TransferableBuffer {
-  private buffer: SharedArrayBuffer | ArrayBuffer;
-  private view: Int32Array;
-  private offset = 0;
-
-  constructor(size: number) {
-    const BufferConstructor =
-      typeof SharedArrayBuffer !== "undefined"
-        ? SharedArrayBuffer
-        : ArrayBuffer;
-    this.buffer = new BufferConstructor(size);
-    this.view = new Int32Array(this.buffer);
-  }
-
-  write(data: number): boolean {
-    if (this.offset >= this.view.length) return false;
-    this.view[this.offset++] = data;
-    return true;
-  }
-
-  read(): Int32Array {
-    return this.view.slice(0, this.offset);
-  }
-
-  clear(): void {
-    this.offset = 0;
-  }
-}
 
 class RingBuffer<T> {
   private buffer: T[];
@@ -616,9 +585,11 @@ class Analytics {
     const events = this.eventQueue.drain();
     if (!events.length || !this.worker) return;
 
+    const analyticsEvents = this.transformQueuedEvents(events);
+
     this.worker.postMessage({
       type: "PROCESS_BATCH",
-      events, // Send raw events to worker
+      events: analyticsEvents, // Send transformed events to worker
       sessionId: this.sessionId,
       deviceInfo: this.getDeviceInfo(),
       browserInfo: this.getBrowserInfo(),
@@ -817,7 +788,10 @@ class Analytics {
   private handleWorkerMessage = (event: MessageEvent): void => {
     const { success, metadata, error } = event.data;
     if (!success) {
-      console.error("[handleWorkerMessage] Analytics worker error:", error);
+      console.error(
+        "[handleWorkerMessage] Analytics worker error:",
+        JSON.stringify(error)
+      );
       return;
     }
     // Handle successful processing
@@ -829,7 +803,10 @@ class Analytics {
   };
 
   private handleWorkerError = (error: ErrorEvent): void => {
-    console.error("[handleWorkerError] Analytics worker error:", error);
+    console.error(
+      "[handleWorkerError] Analytics worker error:",
+      JSON.stringify(error)
+    );
     // Implement fallback processing
   };
 
