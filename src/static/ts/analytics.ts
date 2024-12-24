@@ -188,6 +188,11 @@ class Analytics {
   }
 
   private initialize(): void {
+    if (!this.checkAPIStatus()) {
+      console.error("API is not operational");
+      return;
+    }
+
     // Use Intersection Observer for visibility tracking
     this.setupIntersectionTracking();
 
@@ -225,6 +230,12 @@ class Analytics {
         this.flushEvents();
       }
     });
+  }
+
+  private async checkAPIStatus(): Promise<boolean> {
+    const response = await fetch("http://localhost:8000/status");
+    const [data, status] = await response.json();
+    return status === 200 || data.status === "ok";
   }
 
   private setupIntersectionTracking(): void {
