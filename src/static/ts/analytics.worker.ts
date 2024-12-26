@@ -14,7 +14,7 @@ const CONFIG = {
   MAX_RETRY_ATTEMPTS: 3,
   RETRY_DELAY_MS: 1000,
   COMPRESSION_THRESHOLD: 1024, // 1KB
-  API_ENDPOINT: "http://localhost:8000/api/analytics/batch",
+  API_URL: "http://localhost:8000/",
   DB_NAME: "analytics_worker_store",
   DB_VERSION: 1,
   STORE_NAME: "failed_batches",
@@ -133,12 +133,9 @@ async function processBatch(
 
 async function endSession(message: { sessionId: string }): Promise<void> {
   const { sessionId } = message;
-  const res = await axios.patch(
-    `http://localhost:8000/api/sessions/${sessionId}`,
-    {
-      end_time: new Date().toISOString(),
-    }
-  );
+  const res = await axios.patch(`${CONFIG.API_URL}/api/sessions/${sessionId}`, {
+    end_time: new Date().toISOString(),
+  });
   console.log("Session ended:", res.data);
 }
 
@@ -246,7 +243,7 @@ async function sendBatchToAPI(
   // console.log("Sending batch to API:", JSON.stringify(batch.events, null, 2));
 
   try {
-    const response = await fetch(CONFIG.API_ENDPOINT, {
+    const response = await fetch(`${CONFIG.API_URL}/api/analytics/batch`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
