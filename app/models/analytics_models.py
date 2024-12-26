@@ -145,6 +145,26 @@ class NetworkInfo(BaseModel):
     save_data: bool
     anonymize_ip: bool
 
+class LocationInfo(BaseModel):
+    """Model containing location information.
+
+    Attributes:
+        latitude: Geographic latitude coordinate
+        longitude: Geographic longitude coordinate
+        accuracy: Accuracy of coordinates in meters
+        country: Country name
+        region: Region/state name
+        city: City name
+        timezone: Timezone identifier
+    """
+    latitude: float
+    longitude: float
+    accuracy: float
+    country: str
+    region: str
+    city: str
+    timezone: str
+
 
 ## ANALYTICS EVENT DATA
 

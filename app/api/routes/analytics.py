@@ -3,6 +3,7 @@ from uuid import UUID
 from pydantic import ValidationError
 from logging import getLogger, StreamHandler, Formatter
 import sys
+from typing import List
 
 # FastAPI imports
 from fastapi import (
@@ -12,6 +13,7 @@ from fastapi import (
     HTTPException,
     Response,
     status,
+    Query,
 )
 
 # Third-party imports
@@ -29,26 +31,62 @@ if not logger.handlers:
     logger.addHandler(handler)
     logger.setLevel("DEBUG")  # Set appropriate level
 
-analytics_router = APIRouter(tags=["analytics"])
+analytics_router = APIRouter(
+    prefix="/analytics",
+    tags=["analytics"],
+    responses={
+        404: {"description": "Not found"},
+        500: {"description": "Internal server error"}
+    }
+)
 
-# Main batch endpoint
 @analytics_router.post(
     "/batch",
     summary="Process analytics batch",
-    description="Endpoint to process a batch of analytics data",
-    response_description="Returns confirmation of batch model validation",
+    description="""
+    Process a batch of analytics events.
+    
+    The batch should contain one or more analytics events with associated metadata.
+    Each event will be validated and stored in the database.
+    """,
+    response_description="Returns confirmation of batch processing with stored event IDs",
     response_model=AnalyticsBatchResponse,
+    status_code=status.HTTP_201_CREATED,
     responses={
-        201: {"description": "Analytics batch processed successfully"},
-        400: {"description": "Invalid batch data"},
-        422: {"description": "Validation error"},
+        201: {
+            "description": "Analytics batch processed successfully",
+            "model": AnalyticsBatchResponse
+        },
+        400: {
+            "description": "Invalid batch data or empty batch"
+        },
+        422: {
+            "description": "Validation error in event data"
+        },
+        500: {
+            "description": "Internal server error while processing batch"
+        }
     },
 )
 async def process_batch(
-    batch: AnalyticsBatch = Body(...),
+    batch: AnalyticsBatch = Body(..., description="Batch of analytics events to process"),
     db: AsyncIOMotorDatabase = Depends(deps.get_database),
     response: Response = Response,
 ) -> AnalyticsBatchResponse:
+    """
+    Process a batch of analytics events.
+    
+    Args:
+        batch: Collection of analytics events to be processed
+        db: Database connection
+        response: FastAPI response object
+        
+    Returns:
+        AnalyticsBatchResponse containing success status and list of stored event IDs
+        
+    Raises:
+        HTTPException: If batch is empty, validation fails, or storage fails
+    """
     try:
         if not batch.events:
             logger.warning("Received empty batch")
@@ -83,12 +121,43 @@ async def process_batch(
         )
 
 
-@analytics_router.get("/events")
+@analytics_router.get(
+    "/events",
+    summary="Get analytics events",
+    description="Retrieve analytics events with optional filtering by globe ID and event type",
+    response_model=List[AnalyticsEvent],
+    responses={
+        200: {
+            "description": "Successfully retrieved events",
+            "model": List[AnalyticsEvent]
+        },
+        400: {
+            "description": "Invalid globe ID format"
+        },
+        500: {
+            "description": "Internal server error while retrieving events"
+        }
+    }
+)
 async def get_events(
-    globe_id: UUID | None = None,
-    event_type: str | None = None,
+    globe_id: UUID | None = Query(None, description="Filter events by globe ID"),
+    event_type: str | None = Query(None, description="Filter events by event type"),
     db: AsyncIOMotorDatabase = Depends(deps.get_database),
-) -> list[AnalyticsEvent]:
+) -> List[AnalyticsEvent]:
+    """
+    Retrieve analytics events with optional filtering.
+    
+    Args:
+        globe_id: Optional UUID to filter events by globe instance
+        event_type: Optional string to filter events by type
+        db: Database connection
+        
+    Returns:
+        List of matching analytics events
+        
+    Raises:
+        HTTPException: If globe_id is invalid or retrieval fails
+    """
     try:
         # Build query filters
         query_filter = {}
@@ -96,8 +165,6 @@ async def get_events(
             query_filter["globe_id"] = globe_id
         if event_type:
             query_filter["event_type"] = event_type
-
-        # Rest of the code stays the same...
 
         # Execute query with combined filter and projection
         events = await db.events.find(

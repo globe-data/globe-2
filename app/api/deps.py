@@ -5,6 +5,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from app.config.settings import settings
 from app.db.repositories.users import UserRepository
+from app.db.repositories.sessions import SessionsRepository
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -34,3 +35,6 @@ async def get_current_user(
     if user is None:
         raise credentials_exception
     return user 
+
+async def get_sessions_repository() -> SessionsRepository:
+    return SessionsRepository(db.db) 

@@ -11,6 +11,7 @@ logger = getLogger(__name__)
 
 
 class MongoDB:
+    """MongoDB client."""
     client: Optional[AsyncIOMotorClient] = None
 
     async def connect_to_database(self, max_retries: int = 5, retry_delay: int = 5):
@@ -76,11 +77,19 @@ class MongoDB:
                     },
                 )
                 logger.info("Created events time-series collection")
+            elif "sessions" not in collections:
+                await self.db.create_collection("sessions")
+                logger.info("Created sessions collection")
 
             # Create indexes
             await self.db.events.create_index("globe_id")
             await self.db.events.create_index("event_type")
             await self.db.events.create_index("timestamp")
+
+            await self.db.sessions.create_index("globe_id")
+            await self.db.sessions.create_index("session_id")
+            await self.db.sessions.create_index("timestamp")
+            
             logger.info("Created MongoDB indexes")
         except Exception as e:
             logger.error(f"Failed to create MongoDB indexes: {str(e)}")

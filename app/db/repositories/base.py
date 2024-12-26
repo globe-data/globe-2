@@ -29,3 +29,7 @@ class BaseRepository(Generic[ModelType]):
             query, {"$set": data}
         )
         return result.modified_count 
+
+    async def delete(self, query: dict):
+        result = await self.db[self.collection_name].delete_one(query)
+        return result.deleted_count

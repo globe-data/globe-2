@@ -85,7 +85,7 @@ class Analytics {
 
   // Optimized storage
   private readonly eventQueue = new RingBuffer<QueuedEvent>(1000);
-  private readonly idCache: Int32Array;
+  private readonly idCache: Int32Array | null = null;
   private readonly throttleMap = new Map<EventTypes, DOMHighResTimeStamp>();
 
   // Additional tracking state
@@ -120,6 +120,11 @@ class Analytics {
 
   private constructor() {
     try {
+      if (!this.checkAPIStatus()) {
+        console.error("API is not operational");
+        return;
+      }
+
       // Initialize worker with proper path relative to HTML file
       // const workerPath = new URL("/analytics.worker.js", import.meta.url).href;
       const workerPath = "./analytics.worker.js";
@@ -188,11 +193,6 @@ class Analytics {
   }
 
   private initialize(): void {
-    if (!this.checkAPIStatus()) {
-      console.error("API is not operational");
-      return;
-    }
-
     // Use Intersection Observer for visibility tracking
     this.setupIntersectionTracking();
 
@@ -233,9 +233,13 @@ class Analytics {
   }
 
   private async checkAPIStatus(): Promise<boolean> {
-    const response = await fetch("http://localhost:8000/status");
-    const [data, status] = await response.json();
-    return status === 200 || data.status === "ok";
+    try {
+      const response = await fetch("http://localhost:8000/status");
+      const [data, status] = await response.json();
+      return status === 200 || data.status === "ok";
+    } catch (error) {
+      return false;
+    }
   }
 
   private setupIntersectionTracking(): void {
