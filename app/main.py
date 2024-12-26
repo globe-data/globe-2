@@ -9,7 +9,7 @@ import uvicorn
 from logging import getLogger  
 
 from .config.settings import settings
-from .api.router import api_router
+from .api import api_router  # Import the main api_router
 from app.db.mongodb import db
 
 logger = getLogger(__name__)
@@ -31,7 +31,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Include the router
+# Mount the API router
 app.include_router(api_router, prefix="/api")
 
 app.add_middleware(

@@ -247,10 +247,16 @@ class Analytics {
     if (this.worker) {
       this.worker.postMessage({
         type: "START_SESSION",
-        sessionId: this.sessionId,
-        device: this.getDeviceInfo(),
-        browser: this.getBrowserInfo(),
-        network: this.getNetworkInfo(),
+        session: {
+          globe_id: this.sessionId,
+          session_id: this.sessionId,
+          session_data: {
+            browser_data: this.getBrowserInfo(),
+            device_data: this.getDeviceInfo(),
+            network_data: this.getNetworkInfo(),
+            location_data: null,
+          },
+        },
       });
     }
   }

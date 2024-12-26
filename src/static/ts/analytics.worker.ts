@@ -43,6 +43,7 @@ interface WorkerMessage {
   browser?: BrowserInfo;
   network?: NetworkInfo;
   timestamp?: number;
+  session?: any; // TODO FIX THIS
 }
 
 interface AnalyticsBatch {
@@ -87,11 +88,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
         await processBatch(data);
         break;
       case "START_SESSION":
-        await startSession(
-          data as Required<
-            Pick<WorkerMessage, "sessionId" | "device" | "browser" | "network">
-          >
-        );
+        await startSession(data as Required<Pick<WorkerMessage, "session">>);
         break;
       case "END_SESSION":
         await endSession(data);
@@ -138,25 +135,74 @@ async function processBatch(
 
 // Session management
 async function startSession(
-  message: Required<
-    Pick<WorkerMessage, "sessionId" | "device" | "browser" | "network">
-  >
+  message: Required<Pick<WorkerMessage, "session">>
 ): Promise<void> {
-  const { sessionId, device, browser, network } = message;
-  await axios.post(`${CONFIG.API_URL}/sessions`, {
-    session_id: sessionId,
-    device,
-    browser,
-    network,
-  });
+  try {
+    console.log("Starting session with data:", message.session);
+
+    const response = await fetch(`${CONFIG.API_URL}/sessions/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(message.session),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(`Failed to start session: ${JSON.stringify(error)}`);
+    }
+
+    console.log("Session started successfully");
+  } catch (error) {
+    console.error("Error starting session:", error);
+    throw error;
+  } finally {
+    console.log(
+      "Session started successfully with ID:",
+      message.session?.session_id
+    );
+  }
 }
 
 async function endSession({
   sessionId,
 }: Pick<WorkerMessage, "sessionId">): Promise<void> {
-  await axios.patch(`${CONFIG.API_URL}/sessions/${sessionId}`, {
-    end_time: new Date().toISOString(),
-  });
+  try {
+    // Create a UTC ISO string and ensure milliseconds are included
+    const now = new Date();
+    const end_time = now.toISOString();
+
+    console.log(`Attempting to end session ${sessionId} at ${end_time}`);
+
+    const response = await fetch(`${CONFIG.API_URL}/sessions/${sessionId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        end_time: end_time,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Server error response:", errorData);
+      throw new Error(
+        `Failed to end session: ${response.status} - ${JSON.stringify(
+          errorData
+        )}`
+      );
+    }
+
+    const result = await response.json();
+    console.log(`Successfully ended session ${sessionId}`, result);
+  } catch (error) {
+    console.error("Error ending session:", error);
+    throw error;
+  }
 }
 
 // Event validation

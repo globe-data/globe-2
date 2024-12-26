@@ -32,7 +32,6 @@ if not logger.handlers:
     logger.setLevel("DEBUG")  # Set appropriate level
 
 analytics_router = APIRouter(
-    prefix="/analytics",
     tags=["analytics"],
     responses={
         404: {"description": "Not found"},

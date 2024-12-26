@@ -2,6 +2,7 @@ from typing import Generic, TypeVar, Type, Optional, List
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, ValidationError
 from pymongo.errors import PyMongoError
+from app.utils.mongo_utils import convert_uuids_to_binary, convert_binary_to_uuids
 
 ModelType = TypeVar("ModelType", bound=BaseModel)
 
@@ -29,10 +30,14 @@ class BaseRepository(Generic[ModelType]):
         if not query:
             raise ValueError("Query cannot be empty")
         try:
-            result = await self.db[self.collection_name].find_one(query)
+            # Convert any UUIDs in query to Binary format
+            mongo_query = convert_uuids_to_binary(query)
+            result = await self.db[self.collection_name].find_one(mongo_query)
             if result is None:
                 return None
-            return self.model(**result)
+            # Convert Binary UUIDs back to strings before model conversion
+            converted_result = convert_binary_to_uuids(result)
+            return self.model(**converted_result)
         except PyMongoError as e:
             raise RepositoryError(f"Database error: {str(e)}")
 
@@ -56,18 +61,20 @@ class BaseRepository(Generic[ModelType]):
         if not data:
             raise ValueError("Data cannot be empty")
         try:
-            # Insert the document and get the inserted ID
-            result = await self.db[self.collection_name].insert_one(data.model_dump())
+            # Convert UUIDs to Binary format before insertion
+            mongo_data = convert_uuids_to_binary(data.model_dump())
+            result = await self.db[self.collection_name].insert_one(mongo_data)
             
-            # Fetch the complete document we just inserted
-            created_doc = await self.db[self.collection_name].find_one({"_id": result.inserted_id})
+            created_doc = await self.db[self.collection_name].find_one(
+                {"_id": result.inserted_id}
+            )
             if created_doc is None:
                 raise RepositoryError("Failed to retrieve created document")
             
-            # Convert MongoDB document to model instance
-            # Remove the _id field as it's not part of our model
             created_doc.pop('_id', None)
-            return self.model(**created_doc)
+            # Convert Binary UUIDs back to strings
+            converted_doc = convert_binary_to_uuids(created_doc)
+            return self.model(**converted_doc)
         
         except ValidationError as e:
             raise RepositoryError(f"Data validation error: {str(e)}")

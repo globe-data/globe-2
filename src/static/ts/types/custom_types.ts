@@ -15,6 +15,9 @@ import {
   FormEvent,
   CustomEvent,
   StorageEvent as StorageAnalyticsEvent,
+  BrowserInfo,
+  DeviceInfo,
+  NetworkInfo,
 } from "./pydantic_types";
 
 /**
@@ -61,3 +64,24 @@ export const EventTypesEnum = {
   idle: "idle" as const,
   custom: "custom" as const,
 };
+
+interface LocationInfo {
+  latitude: number;
+  longitude: number;
+}
+
+interface WorkerMessage {
+  type: "PROCESS_BATCH" | "RETRY_FAILED" | "END_SESSION" | "START_SESSION";
+  session?: {
+    globe_id: string;
+    session_id: string;
+    session_data: {
+      browser_data: BrowserInfo;
+      device_data: DeviceInfo;
+      network_data: NetworkInfo;
+      location_data?: LocationInfo | null;
+    };
+  };
+  events?: AnalyticsEventUnion[];
+  timestamp?: number;
+}
