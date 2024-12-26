@@ -6,6 +6,7 @@ import {
   NetworkInfo,
 } from "./types/pydantic_types";
 import { AnalyticsEventUnion, EventTypesEnum } from "./types/custom_types";
+import axios from "axios";
 
 // Worker configuration
 const CONFIG = {
@@ -35,7 +36,7 @@ interface WorkerError {
 }
 
 interface WorkerMessage {
-  type: "PROCESS_BATCH" | "RETRY_FAILED";
+  type: "PROCESS_BATCH" | "RETRY_FAILED" | "END_SESSION";
   events: AnalyticsEventUnion[];
   sessionId: string;
   device: DeviceInfo;
@@ -81,6 +82,9 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
       case "PROCESS_BATCH":
         await processBatch(data);
         break;
+      case "END_SESSION":
+        await endSession(data);
+        break;
       case "RETRY_FAILED":
         await retryFailedBatches();
         break;
@@ -125,6 +129,17 @@ async function processBatch(
     await storeBatchForRetry(message);
     throw error;
   }
+}
+
+async function endSession(message: { sessionId: string }): Promise<void> {
+  const { sessionId } = message;
+  const res = await axios.patch(
+    `http://localhost:8000/api/sessions/${sessionId}`,
+    {
+      end_time: new Date().toISOString(),
+    }
+  );
+  console.log("Session ended:", res.data);
 }
 
 // Validate and transform a single event

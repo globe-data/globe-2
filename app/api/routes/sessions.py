@@ -51,6 +51,19 @@ async def create_session(
             detail=f"Failed to create session: {str(e)}"
         )
 
+@sessions_router.patch(
+    "/{session_id}",
+    response_model=Session,
+    summary="Update an existing session - usually to end the session",
+    description="Updates an existing session with the provided session data"
+)
+async def update_session(
+    session_id: str,
+    session: Session,
+    sessions_repository: SessionsRepository = Depends(get_sessions_repository)
+) -> Session:
+    return await sessions_repository.update_session(session_id, session.model_dump())
+
 @sessions_router.get(
     "/",
     response_model=List[Session],

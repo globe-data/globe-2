@@ -26,7 +26,8 @@ class Session(BaseModel):
     """
     globe_id: str
     session_id: str
-    timestamp: datetime = Field(default_factory=get_utc_now)
+    start_time: datetime = Field(default_factory=get_utc_now)
+    end_time: Optional[datetime] = None
     session_data: SessionData
     
     __collection__ = "sessions"  # Maps this model to the "sessions" MongoDB collection

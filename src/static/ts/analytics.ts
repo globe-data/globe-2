@@ -449,11 +449,32 @@ class Analytics {
   }
 
   private setupTabTracking(): void {
-    window.addEventListener("focus", () => this.handleTabEvent("focus"));
-    window.addEventListener("blur", () => this.handleTabEvent("blur"));
-    window.addEventListener("beforeunload", () =>
-      this.handleTabEvent("unload")
-    );
+    let tabCount = 0;
+
+    window.addEventListener("focus", () => {
+      tabCount++;
+      this.handleTabEvent("focus");
+    });
+
+    window.addEventListener("blur", () => {
+      tabCount--;
+      this.handleTabEvent("blur");
+    });
+
+    window.addEventListener("beforeunload", () => {
+      tabCount--;
+      this.handleTabEvent("unload");
+
+      if (tabCount <= 0) {
+        // Send END_SESSION message to worker when last tab closes
+        if (this.worker) {
+          this.worker.postMessage({
+            type: "END_SESSION",
+            sessionId: this.sessionId,
+          });
+        }
+      }
+    });
   }
 
   private handleTabEvent(action: string): void {
