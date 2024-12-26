@@ -220,6 +220,7 @@ class Analytics {
       this.setupPerformanceTracking();
       this.setupMediaTracking();
       this.setupScrollTracking();
+      this.startSession();
     } catch (error) {
       console.error("Failed to initialize analytics:", error);
     }
@@ -239,6 +240,18 @@ class Analytics {
       return status === 200 || data.status === "ok";
     } catch (error) {
       return false;
+    }
+  }
+
+  private startSession(): void {
+    if (this.worker) {
+      this.worker.postMessage({
+        type: "START_SESSION",
+        sessionId: this.sessionId,
+        device: this.getDeviceInfo(),
+        browser: this.getBrowserInfo(),
+        network: this.getNetworkInfo(),
+      });
     }
   }
 

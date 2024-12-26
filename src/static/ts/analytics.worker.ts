@@ -14,13 +14,13 @@ const CONFIG = {
   MAX_RETRY_ATTEMPTS: 3,
   RETRY_DELAY_MS: 1000,
   COMPRESSION_THRESHOLD: 1024, // 1KB
-  API_URL: "http://localhost:8000/",
+  API_URL: "http://localhost:8000/api",
   DB_NAME: "analytics_worker_store",
   DB_VERSION: 1,
   STORE_NAME: "failed_batches",
 } as const;
 
-// Error handling
+// Types
 type WorkerErrorType =
   | "VALIDATION_ERROR"
   | "PROCESSING_ERROR"
@@ -36,16 +36,23 @@ interface WorkerError {
 }
 
 interface WorkerMessage {
-  type: "PROCESS_BATCH" | "RETRY_FAILED" | "END_SESSION";
-  events: AnalyticsEventUnion[];
+  type: "PROCESS_BATCH" | "RETRY_FAILED" | "END_SESSION" | "START_SESSION";
   sessionId: string;
-  device: DeviceInfo;
-  browser: BrowserInfo;
-  network: NetworkInfo;
-  timestamp: number;
+  events?: AnalyticsEventUnion[];
+  device?: DeviceInfo;
+  browser?: BrowserInfo;
+  network?: NetworkInfo;
+  timestamp?: number;
 }
 
-// IndexedDB setup for failed batch storage
+interface AnalyticsBatch {
+  events: AnalyticsEventUnion[];
+  browser: BrowserInfo;
+  device: DeviceInfo;
+  network: NetworkInfo;
+}
+
+// IndexedDB setup
 let db: IDBDatabase | null = null;
 
 async function initializeDB(): Promise<void> {
@@ -53,12 +60,10 @@ async function initializeDB(): Promise<void> {
     const request = indexedDB.open(CONFIG.DB_NAME, CONFIG.DB_VERSION);
 
     request.onerror = () => reject(new Error("Failed to open IndexedDB"));
-
     request.onsuccess = (event) => {
       db = (event.target as IDBOpenDBRequest).result;
       resolve();
     };
-
     request.onupgradeneeded = (event) => {
       const database = (event.target as IDBOpenDBRequest).result;
       if (!database.objectStoreNames.contains(CONFIG.STORE_NAME)) {
@@ -71,16 +76,22 @@ async function initializeDB(): Promise<void> {
   });
 }
 
-// Main message handler
+// Message handling
 self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
   try {
     await initializeDB();
-
     const { type, ...data } = event.data;
 
     switch (type) {
       case "PROCESS_BATCH":
         await processBatch(data);
+        break;
+      case "START_SESSION":
+        await startSession(
+          data as Required<
+            Pick<WorkerMessage, "sessionId" | "device" | "browser" | "network">
+          >
+        );
         break;
       case "END_SESSION":
         await endSession(data);
@@ -96,7 +107,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
   }
 };
 
-// Process incoming batch
+// Event processing
 async function processBatch(
   message: Omit<WorkerMessage, "type">
 ): Promise<void> {
@@ -104,48 +115,56 @@ async function processBatch(
 
   try {
     const validatedEvents = events
-      .map((event) => {
-        const transformed = validateEvent(event, sessionId);
-        if (!transformed) {
-          console.error("Failed to validate event:", event);
-        }
-        return transformed;
-      })
+      ?.map((event) => validateEvent(event, sessionId))
       .filter((event): event is AnalyticsEventUnion => event !== null);
 
-    if (validatedEvents.length === 0) {
+    if (!validatedEvents?.length) {
       throw new Error("No valid events in batch");
     }
 
-    // Create the batch with all required fields
-    const batch = {
-      events: validatedEvents,
-      browser: browser, // Include browser info
-      device: device, // Include device info
-      network: network, // Include network info
-    };
-    await sendBatchToAPI(batch);
+    if (browser && device && network) {
+      await sendBatchToAPI({
+        events: validatedEvents,
+        browser,
+        device,
+        network,
+      });
+    }
   } catch (error) {
     await storeBatchForRetry(message);
     throw error;
   }
 }
 
-async function endSession(message: { sessionId: string }): Promise<void> {
-  const { sessionId } = message;
-  const res = await axios.patch(`${CONFIG.API_URL}/api/sessions/${sessionId}`, {
-    end_time: new Date().toISOString(),
+// Session management
+async function startSession(
+  message: Required<
+    Pick<WorkerMessage, "sessionId" | "device" | "browser" | "network">
+  >
+): Promise<void> {
+  const { sessionId, device, browser, network } = message;
+  await axios.post(`${CONFIG.API_URL}/sessions`, {
+    session_id: sessionId,
+    device,
+    browser,
+    network,
   });
-  console.log("Session ended:", res.data);
 }
 
-// Validate and transform a single event
+async function endSession({
+  sessionId,
+}: Pick<WorkerMessage, "sessionId">): Promise<void> {
+  await axios.patch(`${CONFIG.API_URL}/sessions/${sessionId}`, {
+    end_time: new Date().toISOString(),
+  });
+}
+
+// Event validation
 function validateEvent(
   event: AnalyticsEventUnion,
   sessionId: string
 ): AnalyticsEventUnion | null {
   try {
-    // Add check for visibility events
     if (event.event_type.toLowerCase() === EventTypesEnum.visibility) {
       console.warn(
         "Visibility events cannot be processed in Web Worker context"
@@ -153,53 +172,17 @@ function validateEvent(
       return null;
     }
 
-    // Add missing required fields
-    const baseEvent = event;
+    const eventType = event.event_type.toLowerCase() as EventTypes;
 
-    const eventType = baseEvent.event_type.toLowerCase() as EventTypes;
-
-    // Ensure required base fields are present
-    if (!baseEvent.url || !baseEvent.domain) {
-      console.error("Missing required fields url/domain:", baseEvent);
+    if (!event.url || !event.domain) {
+      console.error("Missing required fields url/domain:", event);
       return null;
     }
 
-    // Create the base event with event_id
-    if (!validateEventData(eventType, baseEvent.data)) {
-      return null;
-    }
-
-    return baseEvent as AnalyticsEventUnion;
+    return validateEventData(eventType, event.data) ? event : null;
   } catch (error) {
     console.error("Event validation error:", error);
     return null;
-  }
-}
-
-function sanitizeEventData(type: EventTypes, data: any): any {
-  switch (type) {
-    case EventTypesEnum.performance:
-      return {
-        metric_name: data.metric_name,
-        value: data.value,
-        navigation_type: data.navigation_type || "navigate",
-        effective_connection_type: data.effective_connection_type || "unknown",
-      };
-
-    case EventTypesEnum.resource:
-      return {
-        resource_type: data.resource_type,
-        url: data.url,
-        duration: Math.max(0, data.duration),
-        transfer_size: data.transfer_size || 0,
-        compression_ratio: data.compression_ratio || null,
-        cache_hit: data.cache_hit || false,
-        priority: data.priority || "auto",
-      };
-
-    // Add other cases as needed
-    default:
-      return data;
   }
 }
 
@@ -220,30 +203,21 @@ const requiredFields: Record<EventTypes, string[]> = {
   [EventTypesEnum.idle]: ["idle_time"],
   [EventTypesEnum.custom]: ["name"],
 };
-// Validate event data based on type
-function validateEventData(type: EventTypes, data: unknown): boolean {
-  if (!data || typeof data !== "object") {
-    return false;
-  }
 
-  const fields = requiredFields[type];
-  return fields.every((field) => field in (data as Record<string, unknown>));
+function validateEventData(type: EventTypes, data: unknown): boolean {
+  if (!data || typeof data !== "object") return false;
+  return requiredFields[type].every(
+    (field) => field in (data as Record<string, unknown>)
+  );
 }
 
-// Send batch to API with retry logic
+// API communication
 async function sendBatchToAPI(
-  batch: {
-    events: AnalyticsEventUnion[];
-    browser: BrowserInfo;
-    device: DeviceInfo;
-    network: NetworkInfo;
-  },
+  batch: AnalyticsBatch,
   attempt = 1
 ): Promise<boolean> {
-  // console.log("Sending batch to API:", JSON.stringify(batch.events, null, 2));
-
   try {
-    const response = await fetch(`${CONFIG.API_URL}/api/analytics/batch`, {
+    const response = await fetch(`${CONFIG.API_URL}/analytics/batch`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -258,8 +232,7 @@ async function sendBatchToAPI(
 
     return true;
   } catch (error) {
-    // if (attempt < CONFIG.MAX_RETRY_ATTEMPTS) {
-    if (attempt < 1) {
+    if (attempt < CONFIG.MAX_RETRY_ATTEMPTS) {
       await new Promise((resolve) =>
         setTimeout(resolve, CONFIG.RETRY_DELAY_MS * attempt)
       );
@@ -269,18 +242,15 @@ async function sendBatchToAPI(
   }
 }
 
-// Store failed batch for later retry
+// Error handling and retry logic
 async function storeBatchForRetry(
   batch: Omit<WorkerMessage, "type">
 ): Promise<void> {
-  if (!db) {
-    await initializeDB();
-  }
+  if (!db) await initializeDB();
 
   return new Promise((resolve, reject) => {
     const transaction = db!.transaction([CONFIG.STORE_NAME], "readwrite");
     const store = transaction.objectStore(CONFIG.STORE_NAME);
-
     const request = store.add({
       ...batch,
       retryCount: 0,
@@ -292,7 +262,6 @@ async function storeBatchForRetry(
   });
 }
 
-// Retry failed batches
 async function retryFailedBatches(): Promise<void> {
   if (!db) throw new Error("Database not initialized");
 
@@ -300,7 +269,6 @@ async function retryFailedBatches(): Promise<void> {
   const store = transaction.objectStore(CONFIG.STORE_NAME);
 
   const request = store.getAll();
-
   request.onsuccess = async () => {
     const failedBatches = request.result;
 
@@ -320,7 +288,6 @@ async function retryFailedBatches(): Promise<void> {
   };
 }
 
-// Error handling
 function handleWorkerError(error: unknown): void {
   const workerError: WorkerError = {
     type: "PROCESSING_ERROR",
@@ -329,15 +296,10 @@ function handleWorkerError(error: unknown): void {
     details: error,
   };
 
-  self.postMessage({
-    success: false,
-    error: workerError,
-  });
-
+  self.postMessage({ success: false, error: workerError });
   console.error("[Analytics Worker Error]", workerError);
 }
 
-// Handle unhandled rejections
 self.onunhandledrejection = (event: PromiseRejectionEvent) => {
   handleWorkerError(event.reason);
 };
