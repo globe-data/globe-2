@@ -2,18 +2,18 @@
 from contextlib import asynccontextmanager
 
 # Third-party imports
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from logging import getLogger
 import uvicorn
-
-from logging import getLogger  
-
 from .config.settings import settings
-from .api import api_router  # Import the main api_router
+from .api import api_router
 from app.db.mongodb import db
+from app.middleware.security import SecurityMiddleware
 
+# Configure logger
 logger = getLogger(__name__)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -23,51 +23,57 @@ async def lifespan(app: FastAPI):
     # Shutdown
     await db.close_database_connection()
 
-
 app = FastAPI(
     title=settings.app_name,
     version=settings.version,
     debug=settings.debug,
     lifespan=lifespan,
+    openapi_url="/api/openapi.json",
+    docs_url="/api/docs",
 )
 
-# Mount the API router
-app.include_router(api_router, prefix="/api")
+# Add debug middleware to log all requests
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.debug(f"Incoming {request.method} request to {request.url.path}")
+    logger.debug(f"Headers: {request.headers}")
+    response = await call_next(request)
+    logger.debug(f"Response status: {response.status_code}")
+    return response
 
+# CORS middleware should be first
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:8000"],
+    allow_origins=["*"],  # For development - tighten this in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Type", "Content-Encoding"],
 )
 
-@app.get("/status", 
-    summary="Check API status",
-    description="Returns the current status of the API",
-    response_description="API status",
-    responses={
-        200: {"description": "API is operational"},
-        503: {"description": "API is not operational"}
-    }
-)
+# Then other middleware
+app.add_middleware(SecurityMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Mount the API router
+app.include_router(api_router, prefix="/api")
+logger.debug(f"Registered routes: {[route for route in app.routes]}")
+
+@app.get("/status")
 async def status():
     try:
-        # Check if database is connected
         if not db.client:
-            return {"status": "error", "message": "Database not connected"}, 503
-        return {"status": "ok", "message": "API is operational"}, 200
+            return {"status": "error", "message": "Database not connected"}
+        return {"status": "ok", "message": "API is operational"}
     except Exception as e:
         logger.error(f"Error checking status: {str(e)}")
-        return {"status": "error", "message": str(e)}, 503
-
+        return {"status": "error", "message": str(e)}
 
 if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True,
-        reload_includes=["*.py"],
-        reload_excludes=["*.pyc"],
+        reload=settings.debug,
+        log_level="debug"
     )

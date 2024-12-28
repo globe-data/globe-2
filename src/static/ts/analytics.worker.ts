@@ -6,7 +6,6 @@ import {
   NetworkInfo,
 } from "./types/pydantic_types";
 import { AnalyticsEventUnion, EventTypesEnum } from "./types/custom_types";
-import axios from "axios";
 
 // Worker configuration
 const CONFIG = {
@@ -14,7 +13,7 @@ const CONFIG = {
   MAX_RETRY_ATTEMPTS: 3,
   RETRY_DELAY_MS: 1000,
   COMPRESSION_THRESHOLD: 1024, // 1KB
-  API_URL: "http://localhost:8000/api",
+  API_URL: "https://localhost:8000/api",
   DB_NAME: "analytics_worker_store",
   DB_VERSION: 1,
   STORE_NAME: "failed_batches",
@@ -138,13 +137,12 @@ async function startSession(
   message: Required<Pick<WorkerMessage, "session">>
 ): Promise<void> {
   try {
-    console.log("Starting session with data:", message.session);
+    console.log(`Sending POST request to ${CONFIG.API_URL}/sessions`);
 
-    const response = await fetch(`${CONFIG.API_URL}/sessions/`, {
+    const response = await fetch(`${CONFIG.API_URL}/sessions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Accept: "application/json",
       },
       body: JSON.stringify(message.session),
     });
@@ -154,15 +152,12 @@ async function startSession(
       throw new Error(`Failed to start session: ${JSON.stringify(error)}`);
     }
 
-    console.log("Session started successfully");
+    const result = await response.json();
+    console.log("Session started successfully with ID:", result.session_id);
+    return result;
   } catch (error) {
-    console.error("Error starting session:", error);
+    // console.error("Error starting session:", error);
     throw error;
-  } finally {
-    console.log(
-      "Session started successfully with ID:",
-      message.session?.session_id
-    );
   }
 }
 
@@ -185,11 +180,12 @@ async function endSession({
       body: JSON.stringify({
         end_time: end_time,
       }),
+      credentials: "include",
     });
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error("Server error response:", errorData);
+      // console.error("Server error response:", errorData);
       throw new Error(
         `Failed to end session: ${response.status} - ${JSON.stringify(
           errorData
@@ -200,7 +196,7 @@ async function endSession({
     const result = await response.json();
     console.log(`Successfully ended session ${sessionId}`, result);
   } catch (error) {
-    console.error("Error ending session:", error);
+    // console.error("Error ending session:", error);
     throw error;
   }
 }
@@ -221,13 +217,13 @@ function validateEvent(
     const eventType = event.event_type.toLowerCase() as EventTypes;
 
     if (!event.url || !event.domain) {
-      console.error("Missing required fields url/domain:", event);
+      // console.error("Missing required fields url/domain:", event);
       return null;
     }
 
     return validateEventData(eventType, event.data) ? event : null;
   } catch (error) {
-    console.error("Event validation error:", error);
+    // console.error("Event validation error:", error);
     return null;
   }
 }
@@ -257,28 +253,132 @@ function validateEventData(type: EventTypes, data: unknown): boolean {
   );
 }
 
+// compression
+const compressBatch = async (
+  batch: AnalyticsBatch
+): Promise<{ data: string; encoding: string }> => {
+  try {
+    const jsonString = JSON.stringify(batch);
+    const originalSize = new Blob([jsonString]).size;
+
+    // Don't compress small payloads
+    if (originalSize < CONFIG.COMPRESSION_THRESHOLD) {
+      console.log(
+        `Skipping compression for small payload (${originalSize} bytes)`
+      );
+      return {
+        data: jsonString,
+        encoding: "identity",
+      };
+    }
+
+    // Use streaming compression
+    const encoder = new TextEncoder();
+    const rawData = encoder.encode(jsonString);
+
+    // Create compression stream
+    const cs = new CompressionStream("gzip");
+    const compressedStream = new Blob([rawData]).stream().pipeThrough(cs);
+
+    // Convert compressed stream to Uint8Array
+    const compressedData = await new Response(compressedStream).arrayBuffer();
+    const compressedSize = compressedData.byteLength;
+
+    // Log compression stats
+    // console.log(`Original size: ${originalSize} bytes`);
+    // console.log(`Compressed size: ${compressedSize} bytes`);
+    console.log(
+      `Compression ratio: ${((compressedSize / originalSize) * 100).toFixed(
+        1
+      )}%`
+    );
+
+    // Convert to base64 for transmission
+    const base64Data = btoa(
+      String.fromCharCode(...new Uint8Array(compressedData))
+    );
+
+    return {
+      data: base64Data,
+      encoding: "gzip",
+    };
+  } catch (error) {
+    console.warn("Compression failed, falling back to uncompressed:", error);
+    return {
+      data: JSON.stringify(batch),
+      encoding: "identity",
+    };
+  }
+};
+
+// Add this helper function at the top level
+const isDevelopment = () => {
+  return (
+    CONFIG.API_URL.includes("localhost") || CONFIG.API_URL.includes("127.0.0.1")
+  );
+};
+
 // API communication
 async function sendBatchToAPI(
   batch: AnalyticsBatch,
   attempt = 1
 ): Promise<boolean> {
   try {
+    const { data, encoding } = await compressBatch(batch);
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+
+    if (encoding !== "identity") {
+      headers["Content-Encoding"] = encoding;
+    }
+
+    // Create AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+    console.log(`Sending POST request to ${CONFIG.API_URL}/analytics/batch`);
+
     const response = await fetch(`${CONFIG.API_URL}/analytics/batch`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(batch),
+      headers,
+      body: data,
+      credentials: "include",
+      signal: controller.signal,
+      // Add this for development environments
+      ...(isDevelopment() && {
+        mode: "cors",
+        cache: "no-cache",
+      }),
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(
+        `HTTP error! status: ${response.status}, message: ${errorText}`
+      );
     }
 
     return true;
   } catch (error) {
+    // Improved error logging
+    if (error instanceof Error) {
+      // console.error("API Error:", {
+      //   message: error.message,
+      //   url: CONFIG.API_URL,
+      //   development: isDevelopment(),
+      //   timestamp: new Date().toISOString(),
+      // });
+    }
+
     if (attempt < CONFIG.MAX_RETRY_ATTEMPTS) {
+      console.log(
+        `Retrying... Attempt ${attempt + 1} of ${CONFIG.MAX_RETRY_ATTEMPTS}`
+      );
       await new Promise((resolve) =>
         setTimeout(resolve, CONFIG.RETRY_DELAY_MS * attempt)
       );
@@ -343,7 +443,7 @@ function handleWorkerError(error: unknown): void {
   };
 
   self.postMessage({ success: false, error: workerError });
-  console.error("[Analytics Worker Error]", workerError);
+  // console.error("[Analytics Worker Error]", workerError);
 }
 
 self.onunhandledrejection = (event: PromiseRejectionEvent) => {

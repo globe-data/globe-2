@@ -1,10 +1,12 @@
 # Standard library imports
+import json
 from uuid import UUID
 from pydantic import ValidationError
 from logging import getLogger, StreamHandler, Formatter
 import sys
-from typing import List
-
+from typing import List, Annotated
+from base64 import b64decode
+import gzip
 # FastAPI imports
 from fastapi import (
     APIRouter,
@@ -14,6 +16,7 @@ from fastapi import (
     Response,
     status,
     Query,
+    Request,
 )
 
 # Third-party imports
@@ -38,6 +41,30 @@ analytics_router = APIRouter(
         500: {"description": "Internal server error"}
     }
 )
+
+# Create a custom dependency for handling compressed analytics data
+async def decompress_analytics(request: Request):
+    """
+    Dependency that handles decompression of analytics payloads.
+    Supports both compressed (gzip + base64) and uncompressed JSON.
+    """
+    content_encoding = request.headers.get("Content-Encoding")
+    body = await request.body()
+
+    if content_encoding == "gzip":
+        try:
+            decoded_data = b64decode(body)
+            decompressed_data = gzip.decompress(decoded_data)
+            return AnalyticsBatch.model_validate_json(decompressed_data)
+        except Exception as e:
+            logger.error(f"Error decompressing analytics data: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid compressed data format"
+            )
+    
+    # Handle uncompressed data
+    return AnalyticsBatch.model_validate_json(body)
 
 @analytics_router.post(
     "/batch",
@@ -66,9 +93,10 @@ analytics_router = APIRouter(
             "description": "Internal server error while processing batch"
         }
     },
+
 )
 async def process_batch(
-    batch: AnalyticsBatch = Body(..., description="Batch of analytics events to process"),
+    batch: Annotated[AnalyticsBatch, decompress_analytics],
     db: AsyncIOMotorDatabase = Depends(deps.get_database),
     response: Response = Response,
 ) -> AnalyticsBatchResponse:
@@ -86,6 +114,7 @@ async def process_batch(
     Raises:
         HTTPException: If batch is empty, validation fails, or storage fails
     """
+    logger.debug(f"Received analytics batch: {batch.model_dump(exclude_none=True)}")
     try:
         if not batch.events:
             logger.warning("Received empty batch")

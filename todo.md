@@ -1,0 +1,6 @@
+- remove session data (browser etc) from the events request body
+  - must modify request pydantic model
+- compression for all request
+- decompression for all endpoints during data processing
+- configure privacy services
+- configure smart contracts
