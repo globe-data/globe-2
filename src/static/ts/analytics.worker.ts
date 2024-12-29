@@ -1,4 +1,5 @@
 // analytics.worker.ts
+import axios from "axios";
 import {
   EventTypes,
   BrowserInfo,
@@ -13,7 +14,7 @@ const CONFIG = {
   MAX_RETRY_ATTEMPTS: 3,
   RETRY_DELAY_MS: 1000,
   COMPRESSION_THRESHOLD: 1024, // 1KB
-  API_URL: "https://localhost:8000/api",
+  API_URL: "http://localhost:8000/api",
   DB_NAME: "analytics_worker_store",
   DB_VERSION: 1,
   STORE_NAME: "failed_batches",
@@ -82,15 +83,33 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
     await initializeDB();
     const { type, ...data } = event.data;
 
+    // Create a structured clone-safe copy of the data
+    const safeData = {
+      ...data,
+      events: data.events?.map((event) => ({
+        ...event,
+        data: JSON.parse(JSON.stringify(event.data)), // Ensure data is clone-safe
+      })),
+      browser: data.browser
+        ? JSON.parse(JSON.stringify(data.browser))
+        : undefined,
+      device: data.device ? JSON.parse(JSON.stringify(data.device)) : undefined,
+      network: data.network
+        ? JSON.parse(JSON.stringify(data.network))
+        : undefined,
+    };
+
     switch (type) {
       case "PROCESS_BATCH":
-        await processBatch(data);
+        await processBatch(safeData);
         break;
       case "START_SESSION":
-        await startSession(data as Required<Pick<WorkerMessage, "session">>);
+        await startSession(
+          safeData as Required<Pick<WorkerMessage, "session">>
+        );
         break;
       case "END_SESSION":
-        await endSession(data);
+        await endSession(safeData);
         break;
       case "RETRY_FAILED":
         await retryFailedBatches();
@@ -102,7 +121,6 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
     handleWorkerError(error);
   }
 };
-
 // Event processing
 async function processBatch(
   message: Omit<WorkerMessage, "type">
@@ -111,8 +129,14 @@ async function processBatch(
 
   try {
     const validatedEvents = events
-      ?.map((event) => validateEvent(event, sessionId))
-      .filter((event): event is AnalyticsEventUnion => event !== null);
+      ?.map((event) => ({
+        ...event,
+        event_id: event.event_id || crypto.randomUUID(),
+        globe_id: sessionId,
+        session_id: sessionId,
+      }))
+      ?.map((event) => validateEvent(event))
+      ?.filter((event): event is AnalyticsEventUnion => event !== null);
 
     if (!validatedEvents?.length) {
       throw new Error("No valid events in batch");
@@ -137,26 +161,12 @@ async function startSession(
   message: Required<Pick<WorkerMessage, "session">>
 ): Promise<void> {
   try {
-    console.log(`Sending POST request to ${CONFIG.API_URL}/sessions`);
-
-    const response = await fetch(`${CONFIG.API_URL}/sessions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(message.session),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(`Failed to start session: ${JSON.stringify(error)}`);
-    }
-
-    const result = await response.json();
-    console.log("Session started successfully with ID:", result.session_id);
-    return result;
+    const { data } = await axios.post(
+      `${CONFIG.API_URL}/sessions`,
+      message.session
+    );
+    return data;
   } catch (error) {
-    // console.error("Error starting session:", error);
     throw error;
   }
 }
@@ -165,65 +175,34 @@ async function endSession({
   sessionId,
 }: Pick<WorkerMessage, "sessionId">): Promise<void> {
   try {
-    // Create a UTC ISO string and ensure milliseconds are included
-    const now = new Date();
-    const end_time = now.toISOString();
-
-    console.log(`Attempting to end session ${sessionId} at ${end_time}`);
-
-    const response = await fetch(`${CONFIG.API_URL}/sessions/${sessionId}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        end_time: end_time,
-      }),
-      credentials: "include",
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      // console.error("Server error response:", errorData);
-      throw new Error(
-        `Failed to end session: ${response.status} - ${JSON.stringify(
-          errorData
-        )}`
-      );
-    }
-
-    const result = await response.json();
-    console.log(`Successfully ended session ${sessionId}`, result);
+    const end_time = new Date().toISOString();
+    await axios.patch(
+      `${CONFIG.API_URL}/sessions/${sessionId}`,
+      { end_time },
+      {
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   } catch (error) {
-    // console.error("Error ending session:", error);
     throw error;
   }
 }
 
 // Event validation
-function validateEvent(
-  event: AnalyticsEventUnion,
-  sessionId: string
-): AnalyticsEventUnion | null {
+function validateEvent(event: AnalyticsEventUnion): AnalyticsEventUnion | null {
   try {
     if (event.event_type.toLowerCase() === EventTypesEnum.visibility) {
-      console.warn(
-        "Visibility events cannot be processed in Web Worker context"
-      );
       return null;
     }
 
     const eventType = event.event_type.toLowerCase() as EventTypes;
 
     if (!event.url || !event.domain) {
-      // console.error("Missing required fields url/domain:", event);
       return null;
     }
 
     return validateEventData(eventType, event.data) ? event : null;
-  } catch (error) {
-    // console.error("Event validation error:", error);
+  } catch {
     return null;
   }
 }
@@ -261,39 +240,18 @@ const compressBatch = async (
     const jsonString = JSON.stringify(batch);
     const originalSize = new Blob([jsonString]).size;
 
-    // Don't compress small payloads
     if (originalSize < CONFIG.COMPRESSION_THRESHOLD) {
-      console.log(
-        `Skipping compression for small payload (${originalSize} bytes)`
-      );
       return {
         data: jsonString,
         encoding: "identity",
       };
     }
 
-    // Use streaming compression
     const encoder = new TextEncoder();
     const rawData = encoder.encode(jsonString);
-
-    // Create compression stream
     const cs = new CompressionStream("gzip");
     const compressedStream = new Blob([rawData]).stream().pipeThrough(cs);
-
-    // Convert compressed stream to Uint8Array
     const compressedData = await new Response(compressedStream).arrayBuffer();
-    const compressedSize = compressedData.byteLength;
-
-    // Log compression stats
-    // console.log(`Original size: ${originalSize} bytes`);
-    // console.log(`Compressed size: ${compressedSize} bytes`);
-    console.log(
-      `Compression ratio: ${((compressedSize / originalSize) * 100).toFixed(
-        1
-      )}%`
-    );
-
-    // Convert to base64 for transmission
     const base64Data = btoa(
       String.fromCharCode(...new Uint8Array(compressedData))
     );
@@ -302,8 +260,7 @@ const compressBatch = async (
       data: base64Data,
       encoding: "gzip",
     };
-  } catch (error) {
-    console.warn("Compression failed, falling back to uncompressed:", error);
+  } catch {
     return {
       data: JSON.stringify(batch),
       encoding: "identity",
@@ -311,7 +268,6 @@ const compressBatch = async (
   }
 };
 
-// Add this helper function at the top level
 const isDevelopment = () => {
   return (
     CONFIG.API_URL.includes("localhost") || CONFIG.API_URL.includes("127.0.0.1")
@@ -324,37 +280,21 @@ async function sendBatchToAPI(
   attempt = 1
 ): Promise<boolean> {
   try {
-    const { data, encoding } = await compressBatch(batch);
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    };
-
-    if (encoding !== "identity") {
-      headers["Content-Encoding"] = encoding;
-    }
-
-    // Create AbortController for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-
-    console.log(`Sending POST request to ${CONFIG.API_URL}/analytics/batch`);
+    // Ensure the batch data is clone-safe
+    const safeBatch = JSON.parse(JSON.stringify(batch));
 
     const response = await fetch(`${CONFIG.API_URL}/analytics/batch`, {
       method: "POST",
-      headers,
-      body: data,
-      credentials: "include",
-      signal: controller.signal,
-      // Add this for development environments
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(safeBatch),
       ...(isDevelopment() && {
         mode: "cors",
         cache: "no-cache",
       }),
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -365,20 +305,7 @@ async function sendBatchToAPI(
 
     return true;
   } catch (error) {
-    // Improved error logging
-    if (error instanceof Error) {
-      // console.error("API Error:", {
-      //   message: error.message,
-      //   url: CONFIG.API_URL,
-      //   development: isDevelopment(),
-      //   timestamp: new Date().toISOString(),
-      // });
-    }
-
     if (attempt < CONFIG.MAX_RETRY_ATTEMPTS) {
-      console.log(
-        `Retrying... Attempt ${attempt + 1} of ${CONFIG.MAX_RETRY_ATTEMPTS}`
-      );
       await new Promise((resolve) =>
         setTimeout(resolve, CONFIG.RETRY_DELAY_MS * attempt)
       );
@@ -387,7 +314,6 @@ async function sendBatchToAPI(
     throw error;
   }
 }
-
 // Error handling and retry logic
 async function storeBatchForRetry(
   batch: Omit<WorkerMessage, "type">
@@ -422,7 +348,7 @@ async function retryFailedBatches(): Promise<void> {
       try {
         await processBatch(batch);
         await store.delete(batch.id);
-      } catch (error) {
+      } catch {
         if (batch.retryCount >= CONFIG.MAX_RETRY_ATTEMPTS) {
           await store.delete(batch.id);
         } else {
@@ -435,6 +361,17 @@ async function retryFailedBatches(): Promise<void> {
 }
 
 function handleWorkerError(error: unknown): void {
+  // Ignore Cloudflare Worker specific errors about postMessage and transformRequest
+  if (
+    error instanceof Error &&
+    (error.message.includes("DedicatedWorkerGlobalScope") ||
+      error.message.includes("transformRequest")) &&
+    (error.message.includes("postMessage") ||
+      error.message.includes("could not be cloned"))
+  ) {
+    return;
+  }
+
   const workerError: WorkerError = {
     type: "PROCESSING_ERROR",
     message: error instanceof Error ? error.message : "Unknown error occurred",
@@ -443,9 +380,15 @@ function handleWorkerError(error: unknown): void {
   };
 
   self.postMessage({ success: false, error: workerError });
-  // console.error("[Analytics Worker Error]", workerError);
 }
 
 self.onunhandledrejection = (event: PromiseRejectionEvent) => {
+  // Ignore Cloudflare Worker specific errors
+  if (
+    event.reason?.message?.includes("DedicatedWorkerGlobalScope") ||
+    event.reason?.message?.includes("transformRequest")
+  ) {
+    return;
+  }
   handleWorkerError(event.reason);
 };

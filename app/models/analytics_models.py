@@ -647,25 +647,21 @@ class AnalyticsBatch(BaseModel):
     def validate_events(cls, events):
         validated_events = []
         for event in events:
-            try:
-                if isinstance(event, dict):
-                    event_type = event.get("event_type")
-                    if event_type in EVENT_MODELS:
-                        model = EVENT_MODELS[EventTypes(event_type)]
-                        try:
-                            validated_event = model(**event)
-                            validated_events.append(validated_event)
-                        except ValidationError as e:
-                            # Add more detailed error logging
-                            logger.error(f"Validation error for {event_type}: {e.errors()}")
-                            logger.error(f"Event data: {event}")
-                    else:
-                        logger.error(f"Unknown event type: {event_type}")
-                else:
-                    logger.error(f"Invalid event format: {event}")
-            except Exception as e:
-                logger.error(f"Error processing event: {e}", exc_info=True)
+            if not isinstance(event, dict):
                 continue
+                
+            event_type = event.get("event_type")
+            if not event_type or event_type not in EVENT_MODELS:
+                continue
+                
+            model = EVENT_MODELS[EventTypes(event_type)]
+            try:
+                validated_event = model(**event)
+                validated_events.append(validated_event)
+            except ValidationError as e:
+                logger.error(f"Validation error: {e.errors()}\nEvent data: {event}")
+                continue
+                
         return validated_events
 
 

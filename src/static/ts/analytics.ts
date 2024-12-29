@@ -78,7 +78,7 @@ interface PrivacySettings {
 class Analytics {
   private static instance: Analytics | null = null;
   private readonly worker: Worker | null = null;
-  private readonly sessionId = crypto.randomUUID();
+  private sessionId: string | null = null;
   private currentUserId: string | null = null;
 
   private readonly batchSize = 50;
@@ -126,13 +126,18 @@ class Analytics {
       }
 
       // Initialize worker with proper path relative to HTML file
-      // const workerPath = new URL("/analytics.worker.js", import.meta.url).href;
       const workerPath = "./analytics.worker.js";
       this.worker = new Worker(workerPath, { type: "module" });
 
       // Initialize required properties
       this.initializePrivacySettings();
-      this.initialize();
+      this.initializeSession()
+        .then(() => {
+          this.initialize();
+        })
+        .catch((error) => {
+          console.error("Failed to initialize session:", error);
+        });
 
       // Ensure worker is ready
       this.worker.onmessage = this.handleWorkerMessage;
@@ -168,9 +173,11 @@ class Analytics {
     this.idCache = new Int32Array(new bufferConstructor(4000));
   }
 
-  public static getInstance(): Analytics {
+  public static async getInstance(): Promise<Analytics> {
     if (!Analytics.instance) {
       Analytics.instance = new Analytics();
+      // Wait for session initialization
+      await Analytics.instance.initializeSession();
     }
     return Analytics.instance;
   }
@@ -220,7 +227,7 @@ class Analytics {
       this.setupPerformanceTracking();
       this.setupMediaTracking();
       this.setupScrollTracking();
-      this.startSession();
+      // this.startSession();
     } catch (error) {
       console.error("Failed to initialize analytics:", error);
     }
@@ -243,22 +250,130 @@ class Analytics {
     }
   }
 
-  private startSession(): void {
-    if (this.worker) {
-      this.worker.postMessage({
-        type: "START_SESSION",
-        session: {
-          globe_id: this.sessionId,
-          session_id: this.sessionId,
-          session_data: {
-            browser_data: this.getBrowserInfo(),
-            device_data: this.getDeviceInfo(),
-            network_data: this.getNetworkInfo(),
-            location_data: null,
-          },
-        },
-      });
+  private async initializeSession(): Promise<void> {
+    const GLOBAL_SESSION_KEY = "globe_analytics_session";
+    const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+
+    // Check for existing global session in localStorage
+    const existingSession = localStorage.getItem(GLOBAL_SESSION_KEY);
+
+    if (existingSession) {
+      const session = JSON.parse(existingSession);
+      const sessionAge = Date.now() - session.lastActivity;
+
+      if (sessionAge < SESSION_TIMEOUT) {
+        // Valid session exists - update last activity
+        this.sessionId = session.id;
+        session.lastActivity = Date.now();
+        localStorage.setItem(GLOBAL_SESSION_KEY, JSON.stringify(session));
+        return;
+      }
+      // Session expired, remove it
+      localStorage.removeItem(GLOBAL_SESSION_KEY);
     }
+
+    // Start new global session
+    this.sessionId = crypto.randomUUID();
+    const sessionData = {
+      id: this.sessionId,
+      startTime: Date.now(),
+      lastActivity: Date.now(),
+    };
+    localStorage.setItem(GLOBAL_SESSION_KEY, JSON.stringify(sessionData));
+
+    // Start session in worker
+    if (this.worker) {
+      this.startSession();
+    }
+  }
+
+  private startSession(): void {
+    if (!this.worker || !this.sessionId) return;
+
+    this.worker.postMessage({
+      type: "START_SESSION",
+      session: {
+        globe_id: this.sessionId,
+        session_id: this.sessionId,
+        session_data: {
+          browser_data: this.getBrowserInfo(),
+          device_data: this.getDeviceInfo(),
+          network_data: this.getNetworkInfo(),
+          location_data: null,
+        },
+      },
+    });
+
+    // Set up session timeout handler
+    this.setupSessionTimeout();
+  }
+
+  private setupSessionTimeout(): void {
+    const GLOBAL_SESSION_KEY = "globe_analytics_session";
+    const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+
+    // Update last activity time on user interaction
+    const updateActivity = () => {
+      const session = localStorage.getItem(GLOBAL_SESSION_KEY);
+      if (session) {
+        const sessionData = JSON.parse(session);
+        sessionData.lastActivity = Date.now();
+        localStorage.setItem(GLOBAL_SESSION_KEY, JSON.stringify(sessionData));
+      }
+    };
+
+    // Track user activity
+    ["click", "mousemove", "keypress", "scroll", "touchstart"].forEach(
+      (event) => {
+        window.addEventListener(event, updateActivity, { passive: true });
+      }
+    );
+
+    // Check session status periodically
+    setInterval(() => {
+      const session = localStorage.getItem(GLOBAL_SESSION_KEY);
+      if (session) {
+        const sessionData = JSON.parse(session);
+        const inactiveTime = Date.now() - sessionData.lastActivity;
+        if (inactiveTime >= SESSION_TIMEOUT) {
+          this.endSession();
+        }
+      }
+    }, 60000); // Check every minute
+
+    // Handle page visibility
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        const session = localStorage.getItem(GLOBAL_SESSION_KEY);
+        if (session) {
+          const sessionData = JSON.parse(session);
+          const inactiveTime = Date.now() - sessionData.lastActivity;
+          if (inactiveTime >= SESSION_TIMEOUT) {
+            this.endSession();
+          } else {
+            updateActivity();
+          }
+        }
+      }
+    });
+
+    // Handle page unload
+    window.addEventListener("beforeunload", () => {
+      updateActivity(); // Update last activity before unload
+    });
+  }
+
+  private endSession(): void {
+    if (!this.worker || !this.sessionId) return;
+
+    this.worker.postMessage({
+      type: "END_SESSION",
+      sessionId: this.sessionId,
+    });
+
+    // Clear session storage
+    localStorage.removeItem("globe_analytics_session");
+    this.sessionId = null;
   }
 
   private setupIntersectionTracking(): void {
@@ -623,6 +738,11 @@ class Analytics {
   }
 
   private queueEvent(type: EventTypes, data: unknown): void {
+    if (!this.sessionId) {
+      console.warn("No active session, event discarded");
+      return;
+    }
+
     const event: QueuedEvent = {
       id: crypto.randomUUID(),
       event_type: type.toLowerCase() as EventTypes,
@@ -638,17 +758,17 @@ class Analytics {
 
   private async flushEvents(): Promise<void> {
     const events = this.eventQueue.drain();
-    if (!events.length || !this.worker) return;
+    if (!events.length || !this.worker || !this.sessionId) return;
 
     const analyticsEvents = this.transformQueuedEvents(events);
 
     this.worker.postMessage({
       type: "PROCESS_BATCH",
-      events: analyticsEvents, // Send transformed events to worker
+      events: analyticsEvents,
       sessionId: this.sessionId,
-      deviceInfo: this.getDeviceInfo(),
-      browserInfo: this.getBrowserInfo(),
-      networkInfo: this.getNetworkInfo(),
+      device: this.getDeviceInfo(),
+      browser: this.getBrowserInfo(),
+      network: this.getNetworkInfo(),
       timestamp: Date.now(),
     });
   }
@@ -1190,36 +1310,39 @@ class Analytics {
       title: media.title || null,
     });
   };
-
   private transformQueuedEvents(events: QueuedEvent[]): AnalyticsEventUnion[] {
     return events.map((event) => {
-      // Get current URL and domain with fallbacks
-      const url = window.location.href || "about:blank";
-      const domain = window.location.hostname || "localhost";
-      const referrer = document.referrer || window.location.origin || "direct";
-
+      // Create base event object that matches the Event interface
       const baseEvent = {
         event_id: event.id,
-        globe_id: this.sessionId,
-        session_id: this.sessionId,
+        globe_id: this.sessionId!,
+        session_id: this.sessionId!,
         timestamp: new Date().toISOString(),
         client_timestamp: new Date(event.timestamp).toISOString(),
         event_type: event.event_type,
+        domain: window.location.hostname,
+        url: window.location.href,
+        referrer: document.referrer || null,
         data: event.data,
-        url,
-        domain,
-        referrer,
       };
 
-      if (event.event_type === EventTypesEnum.custom) {
+      // For custom events, add the name field
+      if (event.event_type === "custom") {
         return {
           ...baseEvent,
+          event_type: "custom" as const,
           name: (event.data as { name: string }).name,
-        };
+          data: event.data as Record<string, unknown>,
+        } as any;
       }
 
-      return baseEvent;
-    }) as AnalyticsEventUnion[];
+      // For all other events, ensure event_type is correctly typed
+      return {
+        ...baseEvent,
+        event_type: event.event_type,
+        data: event.data,
+      } as AnalyticsEventUnion;
+    });
   }
 
   // Update performance tracking

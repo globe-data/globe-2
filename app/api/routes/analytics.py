@@ -1,5 +1,4 @@
 # Standard library imports
-import json
 from uuid import UUID
 from pydantic import ValidationError
 from logging import getLogger, StreamHandler, Formatter
@@ -51,6 +50,9 @@ async def decompress_analytics(request: Request):
     content_encoding = request.headers.get("Content-Encoding")
     body = await request.body()
 
+    logger.info(f"Decompressing the following request body: {body}")
+
+
     if content_encoding == "gzip":
         try:
             decoded_data = b64decode(body)
@@ -65,6 +67,16 @@ async def decompress_analytics(request: Request):
     
     # Handle uncompressed data
     return AnalyticsBatch.model_validate_json(body)
+
+@analytics_router.post("/test")
+async def test_endpoint(
+    request: Request,
+    db: AsyncIOMotorDatabase = Depends(deps.get_database),
+):
+    logger.info(f"Received request: {request}")
+    logger.info(f"Database connection: {db}")
+    return {"message": "Test endpoint reached"}
+
 
 @analytics_router.post(
     "/batch",
@@ -114,7 +126,6 @@ async def process_batch(
     Raises:
         HTTPException: If batch is empty, validation fails, or storage fails
     """
-    logger.debug(f"Received analytics batch: {batch.model_dump(exclude_none=True)}")
     try:
         if not batch.events:
             logger.warning("Received empty batch")
@@ -129,7 +140,6 @@ async def process_batch(
 
         # Extract event_ids from the original events since MongoDB ObjectIds can't be converted to UUIDs
         event_ids = [event.event_id for event in batch.events]
-        logger.debug(f"Stored {len(event_ids)} events")
 
         response.status_code = status.HTTP_201_CREATED
         return AnalyticsBatchResponse(
