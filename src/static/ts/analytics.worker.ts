@@ -129,7 +129,10 @@ async function processBatch(
       ?.map((event) => ({
         ...event,
         event_id: event.event_id || crypto.randomUUID(),
-        globe_id: sessionId,
+        globe_id:
+          event.globe_id ||
+          message.session?.globe_id ||
+          "d4b0f5c2-3d6e-4f1a-9e8b-dd83d0f5c2a1",
         session_id: sessionId,
       }))
       ?.map((event) => validateEvent(event))
@@ -140,9 +143,12 @@ async function processBatch(
     }
 
     if (browser && device && network) {
-      await sendBatchToAPI({
-        events: validatedEvents,
-      });
+      await sendBatchToAPI(
+        {
+          events: validatedEvents,
+        },
+        message.session?.globe_id
+      );
     }
   } catch (error) {
     await storeBatchForRetry(message);
@@ -154,6 +160,9 @@ async function processBatch(
 async function startSession(
   message: Required<Pick<WorkerMessage, "session">>
 ): Promise<void> {
+  message.session.globe_id =
+    message.session.globe_id || "d4b0f5c2-3d6e-4f1a-9e8b-dd83d0f5c2a1";
+
   try {
     const { data } = await axios.post(
       `${CONFIG.API_URL}/sessions`,
@@ -271,14 +280,18 @@ const isDevelopment = () => {
 // API communication
 async function sendBatchToAPI(
   batch: AnalyticsBatch,
+  globe_id: string = "d4b0f5c2-3d6e-4f1a-9e8b-dd83d0f5c2a1",
   attempt = 1
 ): Promise<boolean> {
   try {
     // Ensure the batch data is clone-safe
     const safeBatch = JSON.parse(JSON.stringify(batch));
 
-    console.log(safeBatch);
+    safeBatch.events.forEach((event: AnalyticsEventUnion) => {
+      event.globe_id = globe_id;
+    });
 
+    console.log("Sending batch to API", safeBatch);
     const response = await fetch(`${CONFIG.API_URL}/analytics/batch`, {
       method: "POST",
       headers: {
@@ -305,7 +318,7 @@ async function sendBatchToAPI(
       await new Promise((resolve) =>
         setTimeout(resolve, CONFIG.RETRY_DELAY_MS * attempt)
       );
-      return sendBatchToAPI(batch, attempt + 1);
+      return sendBatchToAPI(batch, globe_id, attempt + 1);
     }
     throw error;
   }

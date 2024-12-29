@@ -28,8 +28,6 @@ app = FastAPI(
     version=settings.version,
     debug=settings.debug,
     lifespan=lifespan,
-    openapi_url="/api/openapi.json",
-    docs_url="/api/docs",
 )
 
 # Add debug middleware to log all requests

@@ -11,7 +11,7 @@ class SessionData(BaseModel):
     browser_data: BrowserInfo
     device_data: DeviceInfo
     network_data: NetworkInfo
-    location_data: Optional[LocationInfo]
+    location_data: Optional[LocationInfo] = None
 
 class Session(BaseModel):
     """Session model.

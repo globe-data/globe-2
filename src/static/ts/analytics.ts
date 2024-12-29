@@ -79,6 +79,7 @@ class Analytics {
   private static instance: Analytics | null = null;
   private readonly worker: Worker | null = null;
   private sessionId: string | null = null;
+  private globeId: string = "d4b0f5c2-3d6e-4f1a-9e8b-dd83d0f5c2a1";
   private currentUserId: string | null = null;
 
   private readonly batchSize = 50;
@@ -264,6 +265,7 @@ class Analytics {
       if (sessionAge < SESSION_TIMEOUT) {
         // Valid session exists - update last activity
         this.sessionId = session.id;
+        this.globeId = session.globeId;
         session.lastActivity = Date.now();
         localStorage.setItem(GLOBAL_SESSION_KEY, JSON.stringify(session));
         return;
@@ -272,10 +274,13 @@ class Analytics {
       localStorage.removeItem(GLOBAL_SESSION_KEY);
     }
 
-    // Start new global session
+    // Generate separate IDs for globe and session
+    this.globeId = crypto.randomUUID();
     this.sessionId = crypto.randomUUID();
+
     const sessionData = {
       id: this.sessionId,
+      globeId: this.globeId,
       startTime: Date.now(),
       lastActivity: Date.now(),
     };
@@ -290,11 +295,15 @@ class Analytics {
   private startSession(): void {
     if (!this.worker || !this.sessionId) return;
 
+    const sessionData = JSON.parse(
+      localStorage.getItem("globe_analytics_session") || "{}"
+    );
+
     this.worker.postMessage({
       type: "START_SESSION",
       session: {
-        globe_id: this.sessionId,
         session_id: this.sessionId,
+        globe_id: sessionData.globeId,
         session_data: {
           browser_data: this.getBrowserInfo(),
           device_data: this.getDeviceInfo(),
@@ -304,7 +313,6 @@ class Analytics {
       },
     });
 
-    // Set up session timeout handler
     this.setupSessionTimeout();
   }
 
@@ -1315,7 +1323,7 @@ class Analytics {
       // Create base event object that matches the Event interface
       const baseEvent = {
         event_id: event.id,
-        globe_id: this.sessionId!,
+        globe_id: this.globeId!,
         session_id: this.sessionId!,
         timestamp: new Date().toISOString(),
         client_timestamp: new Date(event.timestamp).toISOString(),

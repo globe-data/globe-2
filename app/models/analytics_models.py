@@ -85,9 +85,9 @@ class BrowserInfo(BaseModel):
     user_agent: str
     language: str
     platform: str
-    vendor: Optional[str]
+    vendor: str
     cookies_enabled: bool
-    do_not_track: Optional[bool]
+    do_not_track: bool
     time_zone: str
     time_zone_offset: int
 
@@ -121,9 +121,9 @@ class DeviceInfo(BaseModel):
     color_depth: int
     pixel_ratio: float
     max_touch_points: int
-    memory: Optional[int]
-    hardware_concurrency: Optional[int]
-    device_memory: Optional[int]
+    memory: int
+    hardware_concurrency: int
+    device_memory: int
 
 
 class NetworkInfo(BaseModel):
@@ -136,14 +136,16 @@ class NetworkInfo(BaseModel):
         rtt: Round trip time in milliseconds
         save_data: Whether data saver is enabled
         anonymize_ip: Whether to anonymize IP address
+        ip_address: IP address
     """
 
     connection_type: str
     downlink: float
     effective_type: str
-    rtt: float
+    rtt: int
     save_data: bool
     anonymize_ip: bool
+    ip_address: Optional[str] = None
 
 class LocationInfo(BaseModel):
     """Model containing location information.
