@@ -13,7 +13,7 @@ import {
   PageViewEvent,
   PerformanceEvent,
   FormEvent,
-  CustomEvent as AnalyticsCustomEvent,
+  CustomEvent,
   StorageEvent as StorageAnalyticsEvent,
   BrowserInfo,
   DeviceInfo,
@@ -45,7 +45,7 @@ export type AnalyticsEventUnion =
   | PageViewEvent
   | PerformanceEvent
   | FormEvent
-  | AnalyticsCustomEvent;
+  | CustomEvent;
 
 export const EventTypesEnum = {
   pageview: "pageview" as const,

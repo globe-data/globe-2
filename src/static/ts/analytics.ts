@@ -227,7 +227,7 @@ class Analytics {
       this.setupPerformanceTracking();
       this.setupMediaTracking();
       this.setupScrollTracking();
-      // this.startSession();
+      this.startSession();
     } catch (error) {
       console.error("Failed to initialize analytics:", error);
     }

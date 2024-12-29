@@ -48,9 +48,6 @@ interface WorkerMessage {
 
 interface AnalyticsBatch {
   events: AnalyticsEventUnion[];
-  browser: BrowserInfo;
-  device: DeviceInfo;
-  network: NetworkInfo;
 }
 
 // IndexedDB setup
@@ -145,9 +142,6 @@ async function processBatch(
     if (browser && device && network) {
       await sendBatchToAPI({
         events: validatedEvents,
-        browser,
-        device,
-        network,
       });
     }
   } catch (error) {
@@ -282,6 +276,8 @@ async function sendBatchToAPI(
   try {
     // Ensure the batch data is clone-safe
     const safeBatch = JSON.parse(JSON.stringify(batch));
+
+    console.log(safeBatch);
 
     const response = await fetch(`${CONFIG.API_URL}/analytics/batch`, {
       method: "POST",

@@ -30,10 +30,6 @@ sessions_router = APIRouter(
 async def create_session(
     session: Session, db: AsyncIOMotorDatabase = Depends(deps.get_database)
 ):
-    logger.info("=== New Session Creation Request ===")
-    logger.debug(f"Received session data: {session.model_dump_json()}")
-    logger.debug(f"Session data type: {type(session.model_dump())}")
-
     try:
         result = await db[Session.__collection__].insert_one(session.model_dump())
         if result.inserted_id:

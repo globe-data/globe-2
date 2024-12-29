@@ -634,9 +634,6 @@ class AnalyticsBatch(BaseModel):
             Field(discriminator="event_type"),
         ]
     ] = Field(default_factory=list)
-    browser: BrowserInfo
-    device: DeviceInfo
-    network: NetworkInfo
 
     class Config:
         validate_assignment = True
