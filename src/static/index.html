@@ -76,19 +76,6 @@
     <script type="module">
       import Analytics from './analytics.js';
     </script>
-    <script>
-        fetch('./analytics.worker.js')
-            .then(response => {
-                if (!response.ok) throw new Error('Worker file not found');
-                return response.blob();
-            })
-            .then(blob => {
-                const workerUrl = URL.createObjectURL(blob);
-                const worker = new Worker(workerUrl);
-                // Initialize worker here
-            })
-            .catch(error => console.error('Worker file error:', error));
-    </script>
 </body>
 
 </html>

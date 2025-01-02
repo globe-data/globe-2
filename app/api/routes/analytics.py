@@ -9,7 +9,6 @@ import gzip
 # FastAPI imports
 from fastapi import (
     APIRouter,
-    Body,
     Depends,
     HTTPException,
     Response,

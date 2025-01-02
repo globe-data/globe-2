@@ -17,8 +17,9 @@
   "license": "ISC",
   "description": "Globe tracking and analytics system",
   "devDependencies": {
+    "@types/chrome": "^0.0.287",
     "@types/lodash": "^4.17.13",
-    "@types/node": "^22.10.2",
+    "@types/node": "^22.10.3",
     "concurrently": "^8.0.1",
     "dotenv": "^16.4.5",
     "esbuild": "^0.24.0",

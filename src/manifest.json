@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Globe Data",
+  "version": "0.0.1",
+  "description": "Tracking scripts for the Globe Data ecosystem",
+  "icons": {
+    "48": "images/logo.png",
+    "128": "images/logo.png"
+  },
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["/dist/content.js"]
+  }],
+  "web_accessible_resources": [{
+    "resources": [
+      "/dist/analytics.js",
+      "/dist/analytics.worker.js",
+      "/dist/analytics-init.js"
+    ],
+    "matches": ["<all_urls>"]
+  }],
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; worker-src 'self'"
+  }
+}

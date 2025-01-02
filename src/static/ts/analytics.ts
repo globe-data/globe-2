@@ -1,3 +1,5 @@
+/// <reference types="chrome"/>
+
 import {
   EventTypes,
   ClickData,
@@ -120,16 +122,8 @@ class Analytics {
   > = new Map();
 
   private constructor() {
+    this.worker = this.initializeWorker();
     try {
-      if (!this.checkAPIStatus()) {
-        console.error("API is not operational");
-        return;
-      }
-
-      // Initialize worker with proper path relative to HTML file
-      const workerPath = "./analytics.worker.js";
-      this.worker = new Worker(workerPath, { type: "module" });
-
       // Initialize required properties
       this.initializePrivacySettings();
       this.initializeSession()
@@ -141,26 +135,28 @@ class Analytics {
         });
 
       // Ensure worker is ready
-      this.worker.onmessage = this.handleWorkerMessage;
-      this.worker.onerror = this.handleWorkerError;
+      if (this.worker) {
+        this.worker.onmessage = this.handleWorkerMessage;
+        this.worker.onerror = this.handleWorkerError;
 
-      // Start processing events
-      setInterval(() => {
-        const events = this.eventQueue.drain();
-        if (!events.length || !this.worker) return;
+        // Start processing events
+        setInterval(() => {
+          const events = this.eventQueue.drain();
+          if (!events.length) return;
 
-        const analyticsEvents = this.transformQueuedEvents(events);
+          const analyticsEvents = this.transformQueuedEvents(events);
 
-        this.worker.postMessage({
-          type: "PROCESS_BATCH",
-          events: analyticsEvents,
-          sessionId: this.sessionId,
-          device: this.getDeviceInfo(),
-          browser: this.getBrowserInfo(),
-          network: this.getNetworkInfo(),
-          timestamp: Date.now(),
-        } as AnalyticsBatch);
-      }, 5000);
+          this.worker?.postMessage({
+            type: "PROCESS_BATCH",
+            events: analyticsEvents,
+            sessionId: this.sessionId,
+            device: this.getDeviceInfo(),
+            browser: this.getBrowserInfo(),
+            network: this.getNetworkInfo(),
+            timestamp: Date.now(),
+          } as AnalyticsBatch);
+        }, 5000);
+      }
     } catch (error) {
       console.error("Failed to initialize analytics:", error);
     }
@@ -201,6 +197,8 @@ class Analytics {
   }
 
   private initialize(): void {
+    console.log("Intitializing Analytics class");
+
     // Use Intersection Observer for visibility tracking
     this.setupIntersectionTracking();
 
@@ -239,56 +237,84 @@ class Analytics {
         this.flushEvents();
       }
     });
-  }
 
-  private async checkAPIStatus(): Promise<boolean> {
-    try {
-      const response = await fetch("http://localhost:8000/status");
-      const [data, status] = await response.json();
-      return status === 200 || data.status === "ok";
-    } catch (error) {
-      return false;
-    }
+    console.log("Analytics class initialized!");
   }
 
   private async initializeSession(): Promise<void> {
     const GLOBAL_SESSION_KEY = "globe_analytics_session";
-    const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 
-    // Check for existing global session in localStorage
-    const existingSession = localStorage.getItem(GLOBAL_SESSION_KEY);
+    try {
+      let storage: { [key: string]: any };
 
-    if (existingSession) {
-      const session = JSON.parse(existingSession);
-      const sessionAge = Date.now() - session.lastActivity;
-
-      if (sessionAge < SESSION_TIMEOUT) {
-        // Valid session exists - update last activity
-        this.sessionId = session.id;
-        this.globeId = session.globeId;
-        session.lastActivity = Date.now();
-        localStorage.setItem(GLOBAL_SESSION_KEY, JSON.stringify(session));
-        return;
+      // Use appropriate storage mechanism based on context
+      if (typeof chrome !== "undefined" && chrome.storage) {
+        storage = await chrome.storage.local.get(GLOBAL_SESSION_KEY);
+      } else {
+        storage = {
+          [GLOBAL_SESSION_KEY]: localStorage.getItem(GLOBAL_SESSION_KEY),
+        };
       }
-      // Session expired, remove it
-      localStorage.removeItem(GLOBAL_SESSION_KEY);
+
+      const existingSession = storage[GLOBAL_SESSION_KEY];
+      const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+
+      if (existingSession) {
+        const session =
+          typeof existingSession === "string"
+            ? JSON.parse(existingSession)
+            : existingSession;
+
+        const sessionAge = Date.now() - session.lastActivity;
+
+        if (sessionAge < SESSION_TIMEOUT) {
+          // Valid session exists - update last activity
+          this.sessionId = session.id;
+          this.globeId = session.globeId;
+          session.lastActivity = Date.now();
+          await this.setStorageItem(GLOBAL_SESSION_KEY, session);
+          return;
+        }
+        // Session expired, remove it
+        await this.removeStorageItem(GLOBAL_SESSION_KEY);
+      }
+
+      // Generate new session
+      const sessionData = {
+        id: crypto.randomUUID(),
+        globeId: crypto.randomUUID(),
+        startTime: Date.now(),
+        lastActivity: Date.now(),
+      };
+
+      await this.setStorageItem(GLOBAL_SESSION_KEY, sessionData);
+      this.sessionId = sessionData.id;
+      this.globeId = sessionData.globeId;
+
+      // Start session in worker
+      if (this.worker) {
+        this.startSession();
+      }
+    } catch (error) {
+      console.error("Failed to initialize session:", error);
+      throw error;
     }
+  }
 
-    // Generate separate IDs for globe and session
-    this.globeId = crypto.randomUUID();
-    this.sessionId = crypto.randomUUID();
+  // Helper methods for storage operations
+  private async setStorageItem(key: string, value: any): Promise<void> {
+    if (typeof chrome !== "undefined" && chrome.storage) {
+      await chrome.storage.local.set({ [key]: value });
+    } else {
+      localStorage.setItem(key, JSON.stringify(value));
+    }
+  }
 
-    const sessionData = {
-      id: this.sessionId,
-      globeId: this.globeId,
-      startTime: Date.now(),
-      lastActivity: Date.now(),
-    };
-    localStorage.setItem(GLOBAL_SESSION_KEY, JSON.stringify(sessionData));
-
-    // Start session in worker
-    if (this.worker) {
-      this.startSession();
+  private async removeStorageItem(key: string): Promise<void> {
+    if (typeof chrome !== "undefined" && chrome.storage) {
+      await chrome.storage.local.remove(key);
+    } else {
+      localStorage.removeItem(key);
     }
   }
 
@@ -1367,6 +1393,21 @@ class Analytics {
 
     this.queueEvent(EventTypesEnum.performance, performanceData);
   };
+
+  private initializeWorker(): Worker | null {
+    try {
+      const scriptElement = document.querySelector("script[data-worker-url]");
+      const workerUrl = scriptElement?.getAttribute("data-worker-url");
+
+      if (workerUrl) {
+        return new Worker(workerUrl, { type: "module" });
+      }
+      return null;
+    } catch (error) {
+      console.error("Failed to initialize worker:", error);
+      return null;
+    }
+  }
 }
 
 export default Analytics.getInstance();
