@@ -33,13 +33,9 @@ async def create_session(
 ):
     try:
         body = await request.json()
-        logger.info("Raw request body:")
-        logger.info(body)
         
         # Now manually validate the session data
         session = Session(**body)
-        logger.info("Validated session data:")
-        logger.info(session.model_dump())
         
         ip_address = request.client.host
         session.session_data.network_data.ip_address = ip_address

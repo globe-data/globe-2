@@ -50,9 +50,6 @@ async def decompress_analytics(request: Request):
     content_encoding = request.headers.get("Content-Encoding")
     body = await request.body()
 
-    logger.info(f"Decompressing the following request body: {body}")
-
-
     if content_encoding == "gzip":
         try:
             decoded_data = b64decode(body)
@@ -67,16 +64,6 @@ async def decompress_analytics(request: Request):
     
     # Handle uncompressed data
     return AnalyticsBatch.model_validate_json(body)
-
-@analytics_router.post("/test")
-async def test_endpoint(
-    request: Request,
-    db: AsyncIOMotorDatabase = Depends(deps.get_database),
-):
-    logger.info(f"Received request: {request}")
-    logger.info(f"Database connection: {db}")
-    return {"message": "Test endpoint reached"}
-
 
 @analytics_router.post(
     "/batch",
@@ -108,7 +95,7 @@ async def test_endpoint(
 
 )
 async def process_batch(
-    batch: Annotated[AnalyticsBatch, decompress_analytics],
+    request: Request,
     db: AsyncIOMotorDatabase = Depends(deps.get_database),
     response: Response = Response,
 ) -> AnalyticsBatchResponse:
@@ -116,17 +103,23 @@ async def process_batch(
     Process a batch of analytics events.
     
     Args:
-        batch: Collection of analytics events to be processed
+        batch: Collection of analytics events to be processed (already decompressed by dependency)
         db: Database connection
         response: FastAPI response object
         
     Returns:
         AnalyticsBatchResponse containing success status and list of stored event IDs
-        
-    Raises:
-        HTTPException: If batch is empty, validation fails, or storage fails
     """
+
     try:
+        # Get batch data (either compressed or uncompressed)
+        batch = (
+            await decompress_analytics(request)
+            if dict(request.headers).get("content-encoding") == "gzip"
+            else AnalyticsBatch.model_validate_json(await request.body())
+        )
+
+        # Validate batch is not empty
         if not batch.events:
             logger.warning("Received empty batch")
             raise HTTPException(
@@ -134,11 +127,11 @@ async def process_batch(
                 detail="Batch must contain events",
             )
 
-        # Convert events to dict and store in MongoDB
+        # Convert events to dictionaries for database storage
         events = [event.model_dump() for event in batch.events]
-        result = await db.events.insert_many(events)
+        await db.events.insert_many(events)
 
-        # Extract event_ids from the original events since MongoDB ObjectIds can't be converted to UUIDs
+        # Extract event_ids from the original batch
         event_ids = [event.event_id for event in batch.events]
 
         response.status_code = status.HTTP_201_CREATED
@@ -157,7 +150,6 @@ async def process_batch(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred processing the analytics batch",
         )
-
 
 @analytics_router.get(
     "/events",

@@ -259,6 +259,16 @@ const compressBatch = async (
       String.fromCharCode(...new Uint8Array(compressedData))
     );
 
+    console.log("Compressed data", base64Data);
+    const compressedSize = new Blob([base64Data]).size;
+    const compressionRatio = (
+      ((originalSize - compressedSize) / originalSize) *
+      100
+    ).toFixed(2);
+    console.log(
+      `Compression ratio: ${compressionRatio}% (${originalSize} -> ${compressedSize} bytes)`
+    );
+
     return {
       data: base64Data,
       encoding: "gzip",
@@ -281,7 +291,8 @@ const isDevelopment = () => {
 async function sendBatchToAPI(
   batch: AnalyticsBatch,
   globe_id: string = "d4b0f5c2-3d6e-4f1a-9e8b-dd83d0f5c2a1",
-  attempt = 1
+  attempt = 1,
+  compressedData?: { data: string; encoding: string }
 ): Promise<boolean> {
   try {
     // Ensure the batch data is clone-safe
@@ -291,14 +302,19 @@ async function sendBatchToAPI(
       event.globe_id = globe_id;
     });
 
+    // Only compress if we don't have compressed data from a previous attempt
+    const { data, encoding } =
+      compressedData || (await compressBatch(safeBatch));
+
     console.log("Sending batch to API", safeBatch);
     const response = await fetch(`${CONFIG.API_URL}/analytics/batch`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
+        "Content-Encoding": encoding,
       },
-      body: JSON.stringify(safeBatch),
+      body: data,
       ...(isDevelopment() && {
         mode: "cors",
         cache: "no-cache",
@@ -318,7 +334,8 @@ async function sendBatchToAPI(
       await new Promise((resolve) =>
         setTimeout(resolve, CONFIG.RETRY_DELAY_MS * attempt)
       );
-      return sendBatchToAPI(batch, globe_id, attempt + 1);
+      // Pass the compressed data to avoid recompressing
+      return sendBatchToAPI(batch, globe_id, attempt + 1, compressedData);
     }
     throw error;
   }
