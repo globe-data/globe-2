@@ -14,7 +14,10 @@ const CONFIG = {
   MAX_RETRY_ATTEMPTS: 3,
   RETRY_DELAY_MS: 1000,
   COMPRESSION_THRESHOLD: 1024, // 1KB
-  API_URL: "http://localhost:8000/api",
+  API_URL:
+    process.env.NODE_ENV === "development"
+      ? "http://localhost:8000/api"
+      : "https://archwyles--globe-test-fastapi-app.modal.run/", // Replace with your production API URL
   DB_NAME: "analytics_worker_store",
   DB_VERSION: 1,
   STORE_NAME: "failed_batches",

@@ -1396,13 +1396,26 @@ class Analytics {
 
   private initializeWorker(): Worker | null {
     try {
-      const scriptElement = document.querySelector("script[data-worker-url]");
-      const workerUrl = scriptElement?.getAttribute("data-worker-url");
+      const analyticsScript = document.querySelector(
+        "script[data-worker-url]"
+      ) as HTMLScriptElement;
+      const workerUrl = analyticsScript?.dataset.workerUrl;
 
-      if (workerUrl) {
-        return new Worker(workerUrl, { type: "module" });
+      if (!workerUrl) {
+        console.error("Worker URL not found");
+        return null;
       }
-      return null;
+
+      // Create worker directly from the extension URL
+      const worker = new Worker(workerUrl);
+
+      // Verify the worker is created successfully
+      if (!worker) {
+        console.error("Failed to create worker");
+        return null;
+      }
+
+      return worker;
     } catch (error) {
       console.error("Failed to initialize worker:", error);
       return null;

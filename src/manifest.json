@@ -14,8 +14,7 @@
   "web_accessible_resources": [{
     "resources": [
       "/dist/analytics.js",
-      "/dist/analytics.worker.js",
-      "/dist/analytics-init.js"
+      "/dist/analytics.worker.js"
     ],
     "matches": ["<all_urls>"]
   }],
@@ -26,5 +25,8 @@
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; worker-src 'self'"
+  },
+  "action": {
+    "default_popup": "popup.html"
   }
 }
