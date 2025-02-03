@@ -1,7 +1,7 @@
 // Configuration object to replace process.env values in the Chrome extension environment
 const config = {
-  BASE_URL: "http://localhost:3000", // Replace with your actual base URL
-  API_URL: "http://localhost:8000", // Replace with your actual API URL
+  BASE_URL: "http://localhost:3000",
+  API_URL: "http://localhost:8000",
 };
 
 // Common function for authentication verification
