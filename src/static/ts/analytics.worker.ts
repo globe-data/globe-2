@@ -14,10 +14,9 @@ const CONFIG = {
   MAX_RETRY_ATTEMPTS: 3,
   RETRY_DELAY_MS: 1000,
   COMPRESSION_THRESHOLD: 1024, // 1KB
-  API_URL:
-    process.env.NODE_ENV === "development"
-      ? "http://localhost:8000/api"
-      : "https://archwyles--globe-test-fastapi-app.modal.run/", // Replace with your production API URL
+  API_URL: true
+    ? "http://localhost:8000/api"
+    : "https://archwyles--globe-test-fastapi-app.modal.run/", // Replace with your production API URL
   DB_NAME: "analytics_worker_store",
   DB_VERSION: 1,
   STORE_NAME: "failed_batches",
@@ -132,10 +131,7 @@ async function processBatch(
       ?.map((event) => ({
         ...event,
         event_id: event.event_id || crypto.randomUUID(),
-        globe_id:
-          event.globe_id ||
-          message.session?.globe_id ||
-          "d4b0f5c2-3d6e-4f1a-9e8b-dd83d0f5c2a1",
+        globe_id: "9eae4fb8-6cba-456b-b116-dfb1b02a036a", // TODO: Replace with dynamic globe_id from auth system
         session_id: sessionId,
       }))
       ?.map((event) => validateEvent(event))
@@ -150,7 +146,7 @@ async function processBatch(
         {
           events: validatedEvents,
         },
-        message.session?.globe_id
+        "9eae4fb8-6cba-456b-b116-dfb1b02a036a" // TODO: Replace with dynamic globe_id from auth system
       );
     }
   } catch (error) {
@@ -163,13 +159,16 @@ async function processBatch(
 async function startSession(
   message: Required<Pick<WorkerMessage, "session">>
 ): Promise<void> {
-  message.session.globe_id =
-    message.session.globe_id || "d4b0f5c2-3d6e-4f1a-9e8b-dd83d0f5c2a1";
+  // Use the globe_id from the session data
+  const sessionData = {
+    ...message.session,
+    globe_id: message.session.globe_id,
+  };
 
   try {
     const { data } = await axios.post(
       `${CONFIG.API_URL}/sessions`,
-      message.session
+      sessionData
     );
     return data;
   } catch (error) {
@@ -293,7 +292,7 @@ const isDevelopment = () => {
 // API communication
 async function sendBatchToAPI(
   batch: AnalyticsBatch,
-  globe_id: string = "d4b0f5c2-3d6e-4f1a-9e8b-dd83d0f5c2a1",
+  globe_id: string = "9eae4fb8-6cba-456b-b116-dfb1b02a036a", // TODO: Replace with dynamic globe_id from auth system
   attempt = 1,
   compressedData?: { data: string; encoding: string }
 ): Promise<boolean> {

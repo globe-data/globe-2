@@ -81,7 +81,7 @@ class Analytics {
   private static instance: Analytics | null = null;
   private readonly worker: Worker | null = null;
   private sessionId: string | null = null;
-  private globeId: string = "d4b0f5c2-3d6e-4f1a-9e8b-dd83d0f5c2a1";
+  private globe_id: string = "9eae4fb8-6cba-456b-b116-dfb1b02a036a"; // TODO: Replace with dynamic globe_id from auth system
   private currentUserId: string | null = null;
 
   private readonly batchSize = 50;
@@ -269,8 +269,8 @@ class Analytics {
 
         if (sessionAge < SESSION_TIMEOUT) {
           // Valid session exists - update last activity
-          this.sessionId = session.id;
-          this.globeId = session.globeId;
+          this.sessionId = session.session_id;
+          this.globe_id = session.globe_id;
           session.lastActivity = Date.now();
           await this.setStorageItem(GLOBAL_SESSION_KEY, session);
           return;
@@ -281,15 +281,21 @@ class Analytics {
 
       // Generate new session
       const sessionData = {
-        id: crypto.randomUUID(),
-        globeId: crypto.randomUUID(),
+        session_id: crypto.randomUUID(),
+        globe_id: "9eae4fb8-6cba-456b-b116-dfb1b02a036a", // TODO: Replace with dynamic globe_id from auth system
+        session_data: {
+          browser_data: this.getBrowserInfo(),
+          device_data: this.getDeviceInfo(),
+          network_data: this.getNetworkInfo(),
+          location_data: null,
+        },
         startTime: Date.now(),
         lastActivity: Date.now(),
       };
 
       await this.setStorageItem(GLOBAL_SESSION_KEY, sessionData);
-      this.sessionId = sessionData.id;
-      this.globeId = sessionData.globeId;
+      this.sessionId = sessionData.session_id;
+      this.globe_id = sessionData.globe_id;
 
       // Start session in worker
       if (this.worker) {
@@ -321,15 +327,11 @@ class Analytics {
   private startSession(): void {
     if (!this.worker || !this.sessionId) return;
 
-    const sessionData = JSON.parse(
-      localStorage.getItem("globe_analytics_session") || "{}"
-    );
-
     this.worker.postMessage({
       type: "START_SESSION",
       session: {
         session_id: this.sessionId,
-        globe_id: sessionData.globeId,
+        globe_id: this.globe_id,
         session_data: {
           browser_data: this.getBrowserInfo(),
           device_data: this.getDeviceInfo(),
@@ -1349,7 +1351,7 @@ class Analytics {
       // Create base event object that matches the Event interface
       const baseEvent = {
         event_id: event.id,
-        globe_id: this.globeId!,
+        globe_id: this.globe_id,
         session_id: this.sessionId!,
         timestamp: new Date().toISOString(),
         client_timestamp: new Date(event.timestamp).toISOString(),

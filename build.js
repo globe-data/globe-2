@@ -7,12 +7,12 @@ const isWatch = process.argv.includes("--watch");
 /** @type {import('esbuild').BuildOptions} */
 const baseConfig = {
   entryPoints: [
+    "src/content.js",
     "src/static/ts/analytics.ts",
     "src/static/ts/analytics.worker.ts",
     "src/static/ts/authWebhook.ts",
     "src/static/ts/types/custom_types.ts",
     "src/static/ts/types/pydantic_types.ts",
-    "src/content.ts",
   ],
   bundle: true,
   outdir: "src/dist",
@@ -23,6 +23,7 @@ const baseConfig = {
   minify: !isDev,
   loader: {
     ".ts": "ts",
+    ".js": "js",
   },
   define: {
     "process.env.NODE_ENV": JSON.stringify(

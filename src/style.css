@@ -101,3 +101,59 @@ button:disabled {
     background-color: #888;
     cursor: not-allowed;
 }
+
+/* Footer */
+.footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding: 1rem 0.5rem;
+  border-top: 1px solid #e2e8f0;
+  margin-top: auto;
+}
+
+.footer-policies {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.footer-policies a,
+.footer-policies p {
+  color: #444467;
+  text-decoration: none;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.footer-policies a:hover,
+.footer-policies p:hover {
+  text-decoration: underline;
+}
+
+.footer-copyright {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.footer-copyright p {
+  color: #666;
+  font-size: 0.7rem;
+  margin: 0;
+}
+
+.footer-copyright a {
+  color: #444467;
+  text-decoration: none;
+}
+
+.footer-copyright a:hover {
+  text-decoration: underline;
+}
+
+
+
+
