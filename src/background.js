@@ -4,6 +4,8 @@ const config = {
   API_URL: "http://localhost:8000",
 };
 
+let tabId = null;
+
 // Common function for authentication verification
 async function isAuthenticated() {
   try {
@@ -24,7 +26,15 @@ async function isAuthenticated() {
       },
     });
     const data = await response.json();
-    return data.valid;
+    if (data.valid) {
+      // Close login tab if it exists
+      if (tabId) {
+        chrome.tabs.remove(tabId);
+        tabId = null;
+      }
+      return true;
+    }
+    return false;
   } catch (err) {
     console.error("Error verifying auth:", err);
     return false;
@@ -33,10 +43,28 @@ async function isAuthenticated() {
 
 // Redirect function to handle login redirection
 function redirectToLogin() {
-  chrome.tabs.create({
-    url: `${config.BASE_URL}/login?from=extension`,
-  });
+  chrome.tabs.create(
+    {
+      url: `${config.BASE_URL}/login?from=extension`,
+    },
+    (tab) => {
+      tabId = tab.id;
+    }
+  );
 }
+
+// Listen for tab updates so that when the login page (opened via extension)
+// finishes loading we verify authentication and close it if the user is now logged in.
+chrome.tabs.onUpdated.addListener((updatedTabId, changeInfo, tab) => {
+  if (updatedTabId === tabId && changeInfo.status === "complete") {
+    isAuthenticated().then((valid) => {
+      if (valid) {
+        chrome.tabs.remove(tabId);
+        tabId = null;
+      }
+    });
+  }
+});
 
 // Keep service worker alive
 chrome.runtime.onConnect.addListener(function (port) {

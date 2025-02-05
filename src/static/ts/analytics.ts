@@ -81,7 +81,7 @@ class Analytics {
   private static instance: Analytics | null = null;
   private readonly worker: Worker | null = null;
   private sessionId: string | null = null;
-  private globe_id: string = "9eae4fb8-6cba-456b-b116-dfb1b02a036a"; // TODO: Replace with dynamic globe_id from auth system
+  private globe_id: string | null = null;
   private currentUserId: string | null = null;
 
   private readonly batchSize = 50;
@@ -282,7 +282,7 @@ class Analytics {
       // Generate new session
       const sessionData = {
         session_id: crypto.randomUUID(),
-        globe_id: "9eae4fb8-6cba-456b-b116-dfb1b02a036a", // TODO: Replace with dynamic globe_id from auth system
+        globe_id: this.globe_id,
         session_data: {
           browser_data: this.getBrowserInfo(),
           device_data: this.getDeviceInfo(),

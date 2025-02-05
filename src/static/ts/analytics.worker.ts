@@ -131,7 +131,7 @@ async function processBatch(
       ?.map((event) => ({
         ...event,
         event_id: event.event_id || crypto.randomUUID(),
-        globe_id: "9eae4fb8-6cba-456b-b116-dfb1b02a036a", // TODO: Replace with dynamic globe_id from auth system
+        globe_id: "3540c933-c9f7-4025-9415-ae061b825867", // TODO: Replace with dynamic globe_id from auth system
         session_id: sessionId,
       }))
       ?.map((event) => validateEvent(event))
@@ -146,7 +146,7 @@ async function processBatch(
         {
           events: validatedEvents,
         },
-        "9eae4fb8-6cba-456b-b116-dfb1b02a036a" // TODO: Replace with dynamic globe_id from auth system
+        "3540c933-c9f7-4025-9415-ae061b825867" // TODO: Replace with dynamic globe_id from auth system
       );
     }
   } catch (error) {
@@ -292,7 +292,7 @@ const isDevelopment = () => {
 // API communication
 async function sendBatchToAPI(
   batch: AnalyticsBatch,
-  globe_id: string = "9eae4fb8-6cba-456b-b116-dfb1b02a036a", // TODO: Replace with dynamic globe_id from auth system
+  globe_id: string = "3540c933-c9f7-4025-9415-ae061b825867", // TODO: Replace with dynamic globe_id from auth system
   attempt = 1,
   compressedData?: { data: string; encoding: string }
 ): Promise<boolean> {
