@@ -10,7 +10,7 @@
  */
 export type VisibilityState = "hidden" | "visible" | "prerender" | "unloaded";
 /**
- * Enumeration of possible analytics event types.
+ * Types of analytics events.
  */
 export type EventTypes =
   | "pageview"
@@ -27,6 +27,8 @@ export type EventTypes =
   | "storage"
   | "resource"
   | "idle"
+  | "navigation"
+  | "search"
   | "custom";
 
 /**
@@ -50,25 +52,33 @@ export interface AnalyticsBatch {
     | IdleEvent
     | CustomEvent
   )[];
-  browser: BrowserInfo;
-  device: DeviceInfo;
-  network: NetworkInfo;
   [k: string]: unknown;
 }
 /**
  * Event model for pageview events.
  */
 export interface PageViewEvent {
-  globe_id: string;
-  event_id: string;
-  timestamp: string;
+  _id?: string;
+  created_at?: string;
+  updated_at?: string | null;
+  user_id: string;
   session_id: string;
   client_timestamp: string;
   domain: string;
   url: string;
   referrer: string | null;
+  encrypted_metadata?: EncryptedEventMetadata | null;
+  encrypted_data?: string | null;
   event_type: "pageview";
   data: PageViewData;
+}
+/**
+ * Model representing metadata for an encrypted event.
+ */
+export interface EncryptedEventMetadata {
+  key_version: number;
+  encryption_algorithm: string;
+  encrypted_symmetric_key: string;
 }
 /**
  * Model representing data for a pageview event.
@@ -104,14 +114,17 @@ export interface ScreenResolution {
  * Event model for click events.
  */
 export interface ClickEvent {
-  globe_id: string;
-  event_id: string;
-  timestamp: string;
+  _id?: string;
+  created_at?: string;
+  updated_at?: string | null;
+  user_id: string;
   session_id: string;
   client_timestamp: string;
   domain: string;
   url: string;
   referrer: string | null;
+  encrypted_metadata?: EncryptedEventMetadata | null;
+  encrypted_data?: string | null;
   event_type: "click";
   data: ClickData;
 }
@@ -163,14 +176,17 @@ export interface ClickData {
  * Event model for scroll events.
  */
 export interface ScrollEvent {
-  globe_id: string;
-  event_id: string;
-  timestamp: string;
+  _id?: string;
+  created_at?: string;
+  updated_at?: string | null;
+  user_id: string;
   session_id: string;
   client_timestamp: string;
   domain: string;
   url: string;
   referrer: string | null;
+  encrypted_metadata?: EncryptedEventMetadata | null;
+  encrypted_data?: string | null;
   event_type: "scroll";
   data: ScrollData;
 }
@@ -193,14 +209,17 @@ export interface ScrollData {
  * Event model for media playback events.
  */
 export interface MediaEvent {
-  globe_id: string;
-  event_id: string;
-  timestamp: string;
+  _id?: string;
+  created_at?: string;
+  updated_at?: string | null;
+  user_id: string;
   session_id: string;
   client_timestamp: string;
   domain: string;
   url: string;
   referrer: string | null;
+  encrypted_metadata?: EncryptedEventMetadata | null;
+  encrypted_data?: string | null;
   event_type: "media";
   data: MediaData;
 }
@@ -227,14 +246,17 @@ export interface MediaData {
  * Event model for form interaction events.
  */
 export interface FormEvent {
-  globe_id: string;
-  event_id: string;
-  timestamp: string;
+  _id?: string;
+  created_at?: string;
+  updated_at?: string | null;
+  user_id: string;
   session_id: string;
   client_timestamp: string;
   domain: string;
   url: string;
   referrer: string | null;
+  encrypted_metadata?: EncryptedEventMetadata | null;
+  encrypted_data?: string | null;
   event_type: "form";
   data: FormData;
 }
@@ -259,14 +281,17 @@ export interface FormData {
  * Event model for conversion events.
  */
 export interface ConversionEvent {
-  globe_id: string;
-  event_id: string;
-  timestamp: string;
+  _id?: string;
+  created_at?: string;
+  updated_at?: string | null;
+  user_id: string;
   session_id: string;
   client_timestamp: string;
   domain: string;
   url: string;
   referrer: string | null;
+  encrypted_metadata?: EncryptedEventMetadata | null;
+  encrypted_data?: string | null;
   event_type: "conversion";
   data: ConversionData;
 }
@@ -289,14 +314,17 @@ export interface ConversionData {
  * Event model for error events.
  */
 export interface ErrorEvent {
-  globe_id: string;
-  event_id: string;
-  timestamp: string;
+  _id?: string;
+  created_at?: string;
+  updated_at?: string | null;
+  user_id: string;
   session_id: string;
   client_timestamp: string;
   domain: string;
   url: string;
   referrer: string | null;
+  encrypted_metadata?: EncryptedEventMetadata | null;
+  encrypted_data?: string | null;
   event_type: "error";
   data: ErrorData;
 }
@@ -319,14 +347,17 @@ export interface ErrorData {
  * Event model for performance metric events.
  */
 export interface PerformanceEvent {
-  globe_id: string;
-  event_id: string;
-  timestamp: string;
+  _id?: string;
+  created_at?: string;
+  updated_at?: string | null;
+  user_id: string;
   session_id: string;
   client_timestamp: string;
   domain: string;
   url: string;
   referrer: string | null;
+  encrypted_metadata?: EncryptedEventMetadata | null;
+  encrypted_data?: string | null;
   event_type: "performance";
   data: PerformanceData;
 }
@@ -349,14 +380,17 @@ export interface PerformanceData {
  * Event model for visibility state events.
  */
 export interface VisibilityEvent {
-  globe_id: string;
-  event_id: string;
-  timestamp: string;
+  _id?: string;
+  created_at?: string;
+  updated_at?: string | null;
+  user_id: string;
   session_id: string;
   client_timestamp: string;
   domain: string;
   url: string;
   referrer: string | null;
+  encrypted_metadata?: EncryptedEventMetadata | null;
+  encrypted_data?: string | null;
   event_type: "visibility";
   data: VisibilityData;
 }
@@ -390,14 +424,17 @@ export interface VisibilityData {
  * Event model for location change events.
  */
 export interface LocationEvent {
-  globe_id: string;
-  event_id: string;
-  timestamp: string;
+  _id?: string;
+  created_at?: string;
+  updated_at?: string | null;
+  user_id: string;
   session_id: string;
   client_timestamp: string;
   domain: string;
   url: string;
   referrer: string | null;
+  encrypted_metadata?: EncryptedEventMetadata | null;
+  encrypted_data?: string | null;
   event_type: "location";
   data: LocationData;
 }
@@ -426,14 +463,17 @@ export interface LocationData {
  * Event model for tab events.
  */
 export interface TabEvent {
-  globe_id: string;
-  event_id: string;
-  timestamp: string;
+  _id?: string;
+  created_at?: string;
+  updated_at?: string | null;
+  user_id: string;
   session_id: string;
   client_timestamp: string;
   domain: string;
   url: string;
   referrer: string | null;
+  encrypted_metadata?: EncryptedEventMetadata | null;
+  encrypted_data?: string | null;
   event_type: "tab";
   data: TabData;
 }
@@ -454,14 +494,17 @@ export interface TabData {
  * Event model for storage operation events.
  */
 export interface StorageEvent {
-  globe_id: string;
-  event_id: string;
-  timestamp: string;
+  _id?: string;
+  created_at?: string;
+  updated_at?: string | null;
+  user_id: string;
   session_id: string;
   client_timestamp: string;
   domain: string;
   url: string;
   referrer: string | null;
+  encrypted_metadata?: EncryptedEventMetadata | null;
+  encrypted_data?: string | null;
   event_type: "storage";
   data: StorageData;
 }
@@ -482,14 +525,17 @@ export interface StorageData {
  * Event model for resource load events.
  */
 export interface ResourceEvent {
-  globe_id: string;
-  event_id: string;
-  timestamp: string;
+  _id?: string;
+  created_at?: string;
+  updated_at?: string | null;
+  user_id: string;
   session_id: string;
   client_timestamp: string;
   domain: string;
   url: string;
   referrer: string | null;
+  encrypted_metadata?: EncryptedEventMetadata | null;
+  encrypted_data?: string | null;
   event_type: "resource";
   data: ResourceData;
 }
@@ -518,14 +564,17 @@ export interface ResourceData {
  * Event model for idle state events.
  */
 export interface IdleEvent {
-  globe_id: string;
-  event_id: string;
-  timestamp: string;
+  _id?: string;
+  created_at?: string;
+  updated_at?: string | null;
+  user_id: string;
   session_id: string;
   client_timestamp: string;
   domain: string;
   url: string;
   referrer: string | null;
+  encrypted_metadata?: EncryptedEventMetadata | null;
+  encrypted_data?: string | null;
   event_type: "idle";
   data: IdleData;
 }
@@ -546,16 +595,36 @@ export interface IdleData {
  * Event model for custom events with arbitrary data.
  */
 export interface CustomEvent {
-  globe_id: string;
-  event_id: string;
-  timestamp: string;
+  _id?: string;
+  created_at?: string;
+  updated_at?: string | null;
+  user_id: string;
   session_id: string;
   client_timestamp: string;
   domain: string;
   url: string;
   referrer: string | null;
+  encrypted_metadata?: EncryptedEventMetadata | null;
+  encrypted_data?: string | null;
   event_type: "custom";
   name: string;
+  data: {
+    [k: string]: unknown;
+  };
+}
+/**
+ * Model representing a response to an analytics batch request.
+ */
+export interface AnalyticsBatchResponse {
+  success: boolean;
+  events_stored: string[] | null;
+  contract_created?: boolean;
+}
+/**
+ * Model representing an analytics event.
+ */
+export interface AnalyticsEvent {
+  event_type: EventTypes;
   data: {
     [k: string]: unknown;
   };
@@ -577,9 +646,9 @@ export interface BrowserInfo {
   user_agent: string;
   language: string;
   platform: string;
-  vendor: string | null;
+  vendor: string;
   cookies_enabled: boolean;
-  do_not_track: boolean | null;
+  do_not_track: boolean;
   time_zone: string;
   time_zone_offset: number;
 }
@@ -600,9 +669,59 @@ export interface DeviceInfo {
   color_depth: number;
   pixel_ratio: number;
   max_touch_points: number;
-  memory: number | null;
-  hardware_concurrency: number | null;
-  device_memory: number | null;
+  memory: number;
+  hardware_concurrency: number;
+  device_memory: number;
+}
+/**
+ * Base model for analytics events.
+ *
+ * Attributes:
+ *     session_id: Unique identifier for the user session
+ *     client_timestamp: Browser-side timestamp when event occurred
+ */
+export interface Event {
+  _id?: string;
+  created_at?: string;
+  updated_at?: string | null;
+  user_id: string;
+  session_id: string;
+  client_timestamp: string;
+  domain: string;
+  url: string;
+  referrer: string | null;
+  encrypted_metadata?: EncryptedEventMetadata | null;
+  encrypted_data?: string | null;
+}
+/**
+ * Model containing location information.
+ *
+ * Attributes:
+ *     latitude: Geographic latitude coordinate
+ *     longitude: Geographic longitude coordinate
+ *     accuracy: Accuracy of coordinates in meters
+ *     country: Country name
+ *     region: Region/state name
+ *     city: City name
+ *     timezone: Timezone identifier
+ */
+export interface LocationInfo {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+  country: string;
+  region: string;
+  city: string;
+  timezone: string;
+}
+/**
+ * Base model for all MongoDB documents.
+ * MongoDB will generate the _id if not provided.
+ */
+export interface MongoModel {
+  _id?: string | null;
+  created_at?: string;
+  updated_at?: string | null;
 }
 /**
  * Model containing network connection information.
@@ -614,6 +733,7 @@ export interface DeviceInfo {
  *     rtt: Round trip time in milliseconds
  *     save_data: Whether data saver is enabled
  *     anonymize_ip: Whether to anonymize IP address
+ *     ip_address: IP address
  */
 export interface NetworkInfo {
   connection_type: string;
@@ -622,41 +742,5 @@ export interface NetworkInfo {
   rtt: number;
   save_data: boolean;
   anonymize_ip: boolean;
-}
-/**
- * Model representing a response to an analytics batch request.
- */
-export interface AnalyticsBatchResponse {
-  success: boolean;
-  events_stored: string[] | null;
-}
-/**
- * Model representing an analytics event.
- */
-export interface AnalyticsEvent {
-  event_id: string;
-  event_type: EventTypes;
-  data: {
-    [k: string]: unknown;
-  };
-}
-/**
- * Base model for analytics events.
- *
- * Attributes:
- *     globe_id: Unique identifier for the globe instance
- *     event_id: Unique identifier for this specific event
- *     timestamp: Server-side timestamp when event was received
- *     session_id: Unique identifier for the user session
- *     client_timestamp: Browser-side timestamp when event occurred
- */
-export interface Event {
-  globe_id: string;
-  event_id: string;
-  timestamp: string;
-  session_id: string;
-  client_timestamp: string;
-  domain: string;
-  url: string;
-  referrer: string | null;
+  ip_address?: string | null;
 }

@@ -18,7 +18,7 @@ import {
   NetworkInfo,
   VisibilityState,
   AnalyticsBatch,
-} from "./types/pydantic_types";
+} from "./types/pydantic_models";
 import { openDB } from "idb";
 import { QueuedEvent, AnalyticsEventUnion } from "./types/custom_types";
 import { EventTypesEnum } from "./types/custom_types";
@@ -1026,7 +1026,7 @@ class Analytics {
       user_agent: navigator.userAgent,
       language: navigator.language,
       platform: navigator.platform,
-      vendor: navigator.vendor || null,
+      vendor: navigator.vendor || "",
       cookies_enabled: navigator.cookieEnabled,
       do_not_track: navigator.doNotTrack === "1",
       time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -1044,7 +1044,7 @@ class Analytics {
       pixel_ratio: window.devicePixelRatio,
       max_touch_points: navigator.maxTouchPoints,
       memory: (navigator as any).deviceMemory || null,
-      hardware_concurrency: navigator.hardwareConcurrency || null,
+      hardware_concurrency: navigator.hardwareConcurrency,
       device_memory: (navigator as any).deviceMemory || null,
     };
   }

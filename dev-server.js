@@ -12,7 +12,7 @@ async function startDevServer() {
       "src/static/ts/analytics.ts",
       "src/static/ts/analytics.worker.ts",
       "src/static/ts/authWebhook.ts",
-      "src/static/ts/analytics-init.ts",
+      // "src/static/ts/analytics-init.ts",
       "src/static/ts/types/custom_types.ts",
       "src/static/ts/types/pydantic_types.ts",
     ],
@@ -36,7 +36,7 @@ async function startDevServer() {
 
   const { host, port } = await ctx.serve({
     servedir: ".",
-    port: process.env.PORT || 3000,
+    port: process.env.PORT || 3001,
   });
 
   console.log(
