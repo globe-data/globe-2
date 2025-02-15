@@ -56,13 +56,13 @@ function redirectToLogin() {
 // Listen for tab updates so that when the login page (opened via extension)
 // finishes loading we verify authentication and close it if the user is now logged in.
 chrome.tabs.onUpdated.addListener((updatedTabId, changeInfo, tab) => {
-  if (updatedTabId === tabId && changeInfo.status === "complete") {
-    isAuthenticated().then((valid) => {
-      if (valid) {
-        chrome.tabs.remove(tabId);
-        tabId = null;
-      }
-    });
+  if (
+    updatedTabId === tabId &&
+    changeInfo.status === "complete" &&
+    isAuthenticated()
+  ) {
+    chrome.tabs.remove(tabId);
+    tabId = null;
   }
 });
 
