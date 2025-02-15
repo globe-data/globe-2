@@ -5,7 +5,7 @@ import {
   BrowserInfo,
   DeviceInfo,
   NetworkInfo,
-} from "./types/pydantic_types";
+} from "./types/pydantic_models";
 import { AnalyticsEventUnion, EventTypesEnum } from "./types/custom_types";
 
 // Worker configuration
@@ -131,7 +131,7 @@ async function processBatch(
       ?.map((event) => ({
         ...event,
         event_id: event.event_id || crypto.randomUUID(),
-        globe_id: "3540c933-c9f7-4025-9415-ae061b825867", // TODO: Replace with dynamic globe_id from auth system
+        user_id: event.user_id,
         session_id: sessionId,
       }))
       ?.map((event) => validateEvent(event))
@@ -146,7 +146,7 @@ async function processBatch(
         {
           events: validatedEvents,
         },
-        "3540c933-c9f7-4025-9415-ae061b825867" // TODO: Replace with dynamic globe_id from auth system
+        validatedEvents[0].user_id
       );
     }
   } catch (error) {
@@ -159,10 +159,9 @@ async function processBatch(
 async function startSession(
   message: Required<Pick<WorkerMessage, "session">>
 ): Promise<void> {
-  // Use the globe_id from the session data
   const sessionData = {
     ...message.session,
-    globe_id: message.session.globe_id,
+    user_id: message.session.user_id,
   };
 
   try {
@@ -212,7 +211,7 @@ function validateEvent(event: AnalyticsEventUnion): AnalyticsEventUnion | null {
   }
 }
 
-const requiredFields: Record<EventTypes, string[]> = {
+const requiredFields: Partial<Record<EventTypes, string[]>> = {
   [EventTypesEnum.pageview]: ["url", "title"],
   [EventTypesEnum.click]: ["element_path", "x_pos", "y_pos"],
   [EventTypesEnum.scroll]: ["depth", "direction"],
@@ -232,8 +231,10 @@ const requiredFields: Record<EventTypes, string[]> = {
 
 function validateEventData(type: EventTypes, data: unknown): boolean {
   if (!data || typeof data !== "object") return false;
-  return requiredFields[type].every(
-    (field) => field in (data as Record<string, unknown>)
+  return (
+    requiredFields[type]?.every(
+      (field) => field in (data as Record<string, unknown>)
+    ) || false
   );
 }
 
@@ -292,7 +293,7 @@ const isDevelopment = () => {
 // API communication
 async function sendBatchToAPI(
   batch: AnalyticsBatch,
-  globe_id: string = "3540c933-c9f7-4025-9415-ae061b825867", // TODO: Replace with dynamic globe_id from auth system
+  user_id: string,
   attempt = 1,
   compressedData?: { data: string; encoding: string }
 ): Promise<boolean> {
@@ -301,7 +302,7 @@ async function sendBatchToAPI(
     const safeBatch = JSON.parse(JSON.stringify(batch));
 
     safeBatch.events.forEach((event: AnalyticsEventUnion) => {
-      event.globe_id = globe_id;
+      event.user_id = user_id;
     });
 
     // Only compress if we don't have compressed data from a previous attempt
@@ -337,7 +338,7 @@ async function sendBatchToAPI(
         setTimeout(resolve, CONFIG.RETRY_DELAY_MS * attempt)
       );
       // Pass the compressed data to avoid recompressing
-      return sendBatchToAPI(batch, globe_id, attempt + 1, compressedData);
+      return sendBatchToAPI(batch, user_id, attempt + 1, compressedData);
     }
     throw error;
   }

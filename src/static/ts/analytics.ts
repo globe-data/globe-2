@@ -81,7 +81,7 @@ class Analytics {
   private static instance: Analytics | null = null;
   private readonly worker: Worker | null = null;
   private sessionId: string | null = null;
-  private globe_id: string | null = null;
+  private user_id: string | null = null;
   private currentUserId: string | null = null;
 
   private readonly batchSize = 50;
@@ -270,7 +270,7 @@ class Analytics {
         if (sessionAge < SESSION_TIMEOUT) {
           // Valid session exists - update last activity
           this.sessionId = session.session_id;
-          this.globe_id = session.globe_id;
+          this.user_id = session.user_id;
           session.lastActivity = Date.now();
           await this.setStorageItem(GLOBAL_SESSION_KEY, session);
           return;
@@ -282,7 +282,7 @@ class Analytics {
       // Generate new session
       const sessionData = {
         session_id: crypto.randomUUID(),
-        globe_id: this.globe_id,
+        user_id: this.user_id,
         session_data: {
           browser_data: this.getBrowserInfo(),
           device_data: this.getDeviceInfo(),
@@ -295,7 +295,7 @@ class Analytics {
 
       await this.setStorageItem(GLOBAL_SESSION_KEY, sessionData);
       this.sessionId = sessionData.session_id;
-      this.globe_id = sessionData.globe_id;
+      this.user_id = sessionData.user_id;
 
       // Start session in worker
       if (this.worker) {
@@ -331,7 +331,7 @@ class Analytics {
       type: "START_SESSION",
       session: {
         session_id: this.sessionId,
-        globe_id: this.globe_id,
+        user_id: this.user_id,
         session_data: {
           browser_data: this.getBrowserInfo(),
           device_data: this.getDeviceInfo(),
@@ -1351,7 +1351,7 @@ class Analytics {
       // Create base event object that matches the Event interface
       const baseEvent = {
         event_id: event.id,
-        globe_id: this.globe_id,
+        user_id: this.user_id,
         session_id: this.sessionId!,
         timestamp: new Date().toISOString(),
         client_timestamp: new Date(event.timestamp).toISOString(),
